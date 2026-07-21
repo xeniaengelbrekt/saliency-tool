@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Салиентность — анализ визуальной заметности</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
+</head>
+<body>
+  <div class="grid-bg" aria-hidden="true"></div>
+
+  <header class="page-header">
+    <a class="logo" href="#" title="На главную">
+      <span class="logo-mark">◎</span>
+      <span class="logo-text">Салиентность</span>
+      <span class="logo-en">(Saliency)</span>
+    </a>
+    <div class="header-actions">
+      <a class="help-btn" href="eyetracking.html" title="Сравнение с айтрекингом">
+        <span class="help-mark">↔</span>
+        <span>Айтрекинг</span>
+      </a>
+      <button class="help-btn" id="helpBtn" type="button" title="Открыть руководство">
+        <span class="help-mark">?</span>
+        <span>Помощь</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <section class="settings-panel" aria-label="Глобальные настройки">
+      <div class="settings-grid">
+        <div class="setting">
+          <label for="method">Метод оценки</label>
+          <div class="select-wrap">
+            <select id="method">
+              <option value="ft">FT — Frequency-Tuned</option>
+              <option value="dog">DoG — Difference-of-Gaussians</option>
+              <option value="local">Local Contrast</option>
+              <option value="sr">SR — Spectral Residual</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting">
+          <label for="colormap">Цветовая карта</label>
+          <div class="select-wrap">
+            <select id="colormap">
+              <option value="jet">Jet</option>
+              <option value="hot">Hot</option>
+              <option value="gray">Gray</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting">
+          <label for="alpha">Прозрачность оверлея <span class="setting-val" id="alphaVal">70%</span></label>
+          <input type="range" id="alpha" min="0" max="100" value="70">
+        </div>
+      </div>
+
+      <div class="method-desc" id="methodDesc"></div>
+
+      <div class="info-bar">
+        <span class="info-dot"></span>
+        <span class="info-text">Все вычисления выполняются локально в браузере · изображения не передаются на сервер</span>
+        <span class="info-method" id="infoMethod">Текущий метод: <strong>FT</strong></span>
+      </div>
+    </section>
+
+    <div class="mode-panels">
+
+      <!-- ==================== ГЛАВНАЯ: ВЫБОР ЗАДАЧИ ==================== -->
+      <section class="mode-panel active" id="mode-home" role="tabpanel">
+
+        <div class="home-tip">
+          <div class="home-tip-mark">◎</div>
+          <div class="home-tip-body">
+            <div class="home-tip-title">Что такое салиентность и зачем её оценивать</div>
+            <p>
+              Салиентность — это вычислимая мера того, насколько участок изображения
+              выделяется на фоне остального по низкоуровневым визуальным признакам:
+              цвет, яркость, контраст, локальное и глобальное отклонение от среднего.
+              Она не совпадает со смысловой важностью, но устойчиво коррелирует с тем,
+              куда направлен взгляд человека в первые ~200 мс свободного просмотра —
+              то есть до того, как включается осмысленный анализ сцены.
+            </p>
+            <p>
+              <strong class="emphasis">Зачем оценивать.</strong>
+              В когнитивных и нейрокогнитивных исследованиях стимулы должны быть
+              сопоставимы по низкоуровневой заметности. Иначе различия в реакциях
+              участников можно будет объяснить тем, что один стимул просто визуально
+              «громче» другого, а не вашей экспериментальной манипуляцией. Модуль
+              делает салиентность численной и помогает подобрать материал так, чтобы
+              убрать визуальный шум как побочный фактор.
+            </p>
+            <p class="home-tip-note">
+              Все вычисления выполняются локально в браузере. Изображения никуда не передаются.
+            </p>
+          </div>
+        </div>
+
+        <header class="home-section">
+          <h3 class="home-section-title">Перед экспериментом</h3>
+          <p class="home-section-sub">Контроль и подбор стимулов до запуска</p>
+        </header>
+
+        <div class="task-row">
+          <button class="task-card task-card-v" data-go="single" type="button">
+            <header class="tc-head">
+              <span class="tc-num">01</span>
+              <span class="tc-icon">◇</span>
+            </header>
+            <h4 class="tc-title">Анализ одного стимула</h4>
+            <p class="tc-desc">
+              Тепловая карта салиентности поверх изображения, семь метрик с
+              интерактивными пояснениями, гистограмма распределения значений.
+            </p>
+            <p class="tc-when">Проверка стимула, отладка дизайна, знакомство с метрикой</p>
+            <span class="tc-arrow">→</span>
+          </button>
+
+          <button class="task-card task-card-v" data-go="compare" type="button">
+            <header class="tc-head">
+              <span class="tc-num">02</span>
+              <span class="tc-icon">⇆</span>
+            </header>
+            <h4 class="tc-title">Сравнение нескольких стимулов</h4>
+            <p class="tc-desc">
+              Несколько изображений или составной стимул 2×1 / 1×2 / 2×2.
+              Матрица корреляций Пирсона между картами и таблица попарных
+              различий метрик.
+            </p>
+            <p class="tc-when">Контроль серии стимулов, проверка эквивалентности условий</p>
+            <span class="tc-arrow">→</span>
+          </button>
+
+          <button class="task-card task-card-v" data-go="match" type="button">
+            <header class="tc-head">
+              <span class="tc-num">03</span>
+              <span class="tc-icon">⊞</span>
+            </header>
+            <h4 class="tc-title">Подбор сбалансированных наборов</h4>
+            <p class="tc-desc">
+              2–4 группы изображений по разным категориям. Автоматический поиск
+              комбинаций «по одному из каждой» с минимальной дисперсией
+              средней салиентности. Топ-5 вариантов.
+            </p>
+            <p class="tc-when">Составить экспериментальные ряды с равной заметностью</p>
+            <span class="tc-arrow">→</span>
+          </button>
+        </div>
+
+        <header class="home-section home-section-after">
+          <h3 class="home-section-title">Салиентность × Айтрекинг</h3>
+          <p class="home-section-sub">Сравнение моделей с реальными фиксациями участников</p>
+        </header>
+
+        <div class="task-row">
+          <a class="task-card task-card-v task-card-wide" href="eyetracking.html">
+            <header class="tc-head">
+              <span class="tc-num">04</span>
+              <span class="tc-icon">↔</span>
+            </header>
+            <h4 class="tc-title">Сравнение карт айтрекинга и моделей салиентности</h4>
+            <p class="tc-desc">
+              Загрузите стимул и CSV с координатами фиксаций. Модуль построит
+              тепловую карту айтрекинга через KDE, параллельно посчитает карту
+              салиентности и оценит соответствие тремя метриками: Pearson r, NSS, AUC-Judd.
+            </p>
+            <p class="tc-when">Обоснование подбора стимулов, валидация моделей на ваших данных</p>
+            <span class="tc-arrow">→</span>
+          </a>
+        </div>
+
+      </section>
+
+      <!-- ==================== РЕЖИМ 1: ОДНО ИЗОБРАЖЕНИЕ ==================== -->
+      <section class="mode-panel" id="mode-single" role="tabpanel">
+        <header class="panel-header">
+          <h2 class="panel-title">
+            <span class="panel-num">01</span>
+            Одно изображение
+          </h2>
+          <p class="panel-desc">
+            Загрузите изображение — модуль построит карту салиентности, наложит её
+            поверх оригинала и рассчитает семь числовых метрик.
+          </p>
+        </header>
+
+        <div class="dropzone" id="single-dropzone">
+          <input type="file" id="single-file" accept="image/jpeg,image/png,image/webp,image/bmp" hidden>
+          <div class="dropzone-inner">
+            <div class="dropzone-icon">⤓</div>
+            <p class="dropzone-text">Перетащите изображение сюда</p>
+            <p class="dropzone-or">— или —</p>
+            <button class="btn btn-primary" id="single-pickbtn" type="button">Выбрать файл</button>
+            <p class="dropzone-hint">JPG · PNG · WebP · BMP</p>
+          </div>
+        </div>
+
+        <div class="results-block" id="single-results" hidden>
+          <div class="file-info" id="single-fileinfo"></div>
+
+          <div class="stage-row">
+            <div class="stage-wrap">
+              <div class="stage" id="single-stage"></div>
+              <div class="busy-overlay" id="single-busy" hidden>
+                <span class="busy-spinner"></span>
+                <span class="busy-text">Вычисляем…</span>
+              </div>
+            </div>
+
+            <aside class="side-panel">
+              <div class="control-group">
+                <button class="btn btn-ghost btn-block" id="single-toggle-heat" type="button">
+                  <span class="control-icon">◉</span>
+                  <span class="control-label">Скрыть тепловую карту</span>
+                </button>
+                <button class="btn btn-ghost btn-block" id="single-replace" type="button">
+                  <span class="control-icon">↻</span>
+                  <span class="control-label">Заменить изображение</span>
+                </button>
+              </div>
+
+              <div class="legend">
+                <div class="legend-label">Шкала салиентности</div>
+                <div class="legend-bar" id="single-legend"></div>
+                <div class="legend-ticks">
+                  <span>0</span><span>0.5</span><span>1</span>
+                </div>
+              </div>
+
+              <div class="control-group">
+                <button class="btn btn-primary btn-block" id="single-dl-heat" type="button">↓ PNG карта</button>
+                <button class="btn btn-block" id="single-dl-overlay" type="button">↓ PNG оверлей</button>
+              </div>
+            </aside>
+          </div>
+
+          <h3 class="section-title">Метрики
+            <span class="section-sub">кликните по карточке — увидите, что значит и как применять</span>
+          </h3>
+          <div class="metrics-grid" id="single-metrics"></div>
+          <div class="metric-explainer" id="metric-explainer">
+            <div class="explainer-empty">
+              <span class="explainer-arrow">↑</span>
+              Кликните по любой метрике, чтобы увидеть формулу,
+              интерпретацию значений и подсказку, как использовать в исследовании
+            </div>
+          </div>
+
+          <h3 class="section-title">Распределение значений
+            <span class="section-sub">гистограмма карты салиентности · 32 бина</span>
+          </h3>
+          <div class="histogram-wrap">
+            <canvas id="single-histogram" width="720" height="120"></canvas>
+            <div class="histogram-axis">
+              <span>0.0</span><span>0.25</span><span>0.5</span><span>0.75</span><span>1.0</span>
+            </div>
+          </div>
+          <div class="histogram-explainer">
+            <div class="histogram-explainer-title">Как читать гистограмму</div>
+            <div class="histogram-explainer-grid">
+              <div>
+                <span class="he-key">оси</span>
+                <span class="he-val">по горизонтали — значение салиентности от 0 до 1; по вертикали — количество пикселей, попавших в этот диапазон. Цвет столбцов совпадает с выбранной цветовой картой и визуально связывает гистограмму с тепловой картой.</span>
+              </div>
+              <div>
+                <span class="he-key">смещение влево</span>
+                <span class="he-val">высокие столбцы у нуля — большая часть изображения визуально спокойна, заметные точки редкие и контрастные. Удачный профиль для контролируемых стимулов с одним целевым объектом.</span>
+              </div>
+              <div>
+                <span class="he-key">смещение вправо</span>
+                <span class="he-val">высокие столбцы ближе к единице — много областей одновременно конкурируют за внимание. Если так выглядит весь набор, стимулы могут оказаться слишком зашумлёнными.</span>
+              </div>
+              <div>
+                <span class="he-key">плоское распределение</span>
+                <span class="he-val">столбцы примерно равны по всей шкале — высокая энтропия, метод выделяет много разных уровней заметности. Это нормально для богатых природных сцен.</span>
+              </div>
+              <div>
+                <span class="he-key">пунктир на 0.5</span>
+                <span class="he-val">порог метрики spread_pct: всё правее линии считается «активной» зоной. Подпись рядом с пунктиром показывает текущее значение для вашего стимула.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== РЕЖИМ 2: СРАВНЕНИЕ ==================== -->
+      <section class="mode-panel" id="mode-compare" role="tabpanel">
+        <header class="panel-header">
+          <h2 class="panel-title">
+            <span class="panel-num">02</span>
+            Сравнение
+          </h2>
+          <p class="panel-desc">
+            Несколько изображений или один составной стимул в сетке 2×1, 1×2, 2×2.
+            Сравнение карт салиентности через корреляцию Пирсона и попарные различия метрик.
+          </p>
+        </header>
+
+        <div class="subtab-bar" role="tablist">
+          <button class="subtab active" data-sub="multi" type="button" role="tab" aria-selected="true">
+            Несколько изображений
+          </button>
+          <button class="subtab" data-sub="compound" type="button" role="tab" aria-selected="false">
+            Составной стимул
+          </button>
+        </div>
+
+        <!-- ---------- Подрежим 2a: несколько изображений ---------- -->
+        <div class="sub-panel active" id="compare-multi" role="tabpanel">
+          <div class="dropzone" id="multi-dropzone">
+            <input type="file" id="multi-file" accept="image/jpeg,image/png,image/webp,image/bmp" multiple hidden>
+            <div class="dropzone-inner">
+              <div class="dropzone-icon">⤓</div>
+              <p class="dropzone-text">Перетащите несколько изображений</p>
+              <p class="dropzone-or">— или —</p>
+              <button class="btn btn-primary" id="multi-pickbtn" type="button">Выбрать файлы</button>
+              <p class="dropzone-hint">JPG · PNG · WebP · BMP — несколько</p>
+            </div>
+          </div>
+
+          <div class="results-block" id="multi-results" hidden>
+            <div class="toolbar">
+              <button class="btn btn-ghost" id="multi-add" type="button">+ Добавить ещё</button>
+              <button class="btn btn-ghost" id="multi-clear" type="button">⊘ Очистить</button>
+              <button class="btn btn-ghost" id="multi-toggle" type="button">
+                <span class="control-icon">◉</span>
+                <span class="control-label">Скрыть карту</span>
+              </button>
+              <span class="toolbar-info" id="multi-count"></span>
+              <span class="toolbar-spacer"></span>
+              <button class="btn" id="multi-dl-csv" type="button">↓ CSV</button>
+              <button class="btn btn-primary" id="multi-dl-zip" type="button">↓ ZIP всех карт</button>
+            </div>
+
+            <div class="busy-bar" id="multi-busy" hidden>
+              <span class="busy-spinner"></span>
+              <span class="busy-text">Вычисляем…</span>
+              <span class="busy-progress" id="multi-progress"></span>
+            </div>
+
+            <div class="result-grid" id="multi-grid"></div>
+
+            <h3 class="section-title">Корреляция Пирсона <span class="section-sub">между картами салиентности</span></h3>
+            <div class="corr-legend">
+              <span class="corr-key corr-high"></span> r ≥ 0.9 — высокое сходство
+              <span class="corr-key corr-mid"></span> 0.7 ≤ r &lt; 0.9 — умеренное
+              <span class="corr-key corr-low"></span> r &lt; 0.7 — слабое
+            </div>
+            <div class="corr-matrix-wrap">
+              <table class="corr-matrix" id="multi-matrix"></table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---------- Подрежим 2b: составной стимул ---------- -->
+        <div class="sub-panel" id="compare-compound" role="tabpanel">
+          <div class="dropzone" id="compound-dropzone">
+            <input type="file" id="compound-file" accept="image/jpeg,image/png,image/webp,image/bmp" hidden>
+            <div class="dropzone-inner">
+              <div class="dropzone-icon">⤓</div>
+              <p class="dropzone-text">Перетащите составной стимул</p>
+              <p class="dropzone-or">— или —</p>
+              <button class="btn btn-primary" id="compound-pickbtn" type="button">Выбрать файл</button>
+              <p class="dropzone-hint">Изображение с 2 или 4 стимулами в сетке</p>
+            </div>
+          </div>
+
+          <div class="results-block" id="compound-results" hidden>
+            <div class="toolbar">
+              <button class="btn btn-ghost" id="compound-replace" type="button">↻ Заменить</button>
+              <span class="toolbar-info">Сетка:</span>
+              <div class="grid-toggle" role="group" aria-label="Сетка регионов">
+                <button data-grid="2x1" type="button">2×1</button>
+                <button data-grid="1x2" type="button">1×2</button>
+                <button data-grid="2x2" class="active" type="button">2×2</button>
+              </div>
+              <button class="btn btn-ghost" id="compound-toggle" type="button">
+                <span class="control-icon">◉</span>
+                <span class="control-label">Скрыть карту</span>
+              </button>
+              <span class="toolbar-info" id="compound-info"></span>
+              <span class="toolbar-spacer"></span>
+              <button class="btn" id="compound-dl-csv" type="button">↓ CSV</button>
+              <button class="btn btn-primary" id="compound-dl-zip" type="button">↓ ZIP регионов</button>
+            </div>
+
+            <div class="busy-bar" id="compound-busy" hidden>
+              <span class="busy-spinner"></span>
+              <span class="busy-text">Вычисляем…</span>
+              <span class="busy-progress" id="compound-progress"></span>
+            </div>
+
+            <div class="compound-stage">
+              <div class="stage-wrap compound-preview" id="compound-preview"></div>
+              <aside class="side-panel compound-side">
+                <div class="control-group">
+                  <button class="btn btn-block" id="compound-dl-composite" type="button">↓ PNG составная карта</button>
+                </div>
+                <div class="info-block">
+                  <div class="info-block-label">О режиме</div>
+                  <p class="info-block-text">
+                    Изображение делится на равные прямоугольники. Для каждого региона
+                    вычисляется отдельная карта салиентности и метрики, затем
+                    регионы попарно сравниваются.
+                  </p>
+                </div>
+              </aside>
+            </div>
+
+            <h3 class="section-title">Регионы</h3>
+            <div class="result-grid" id="compound-grid"></div>
+
+            <h3 class="section-title">Попарное сравнение</h3>
+            <div class="data-table-wrap">
+              <table class="data-table" id="compound-pairs"></table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== РЕЖИМ 3: ПОДБОР ГРУПП ==================== -->
+      <section class="mode-panel" id="mode-match" role="tabpanel">
+        <header class="panel-header">
+          <h2 class="panel-title">
+            <span class="panel-num">03</span>
+            Подбор групп
+          </h2>
+          <p class="panel-desc">
+            От двух до четырёх групп изображений. Модуль автоматически ищет комбинации
+            «по одному из каждой группы» с максимально близкой средней салиентностью.
+          </p>
+        </header>
+
+        <div class="toolbar">
+          <button class="btn btn-ghost" id="match-add-group" type="button">+ Добавить группу</button>
+          <span class="toolbar-info" id="match-info">2 группы</span>
+          <span class="toolbar-spacer"></span>
+          <button class="btn btn-primary" id="match-find" type="button" disabled>
+            Найти лучшие комбинации
+          </button>
+        </div>
+
+        <div class="busy-bar" id="match-busy" hidden>
+          <span class="busy-spinner"></span>
+          <span class="busy-text">…</span>
+          <span class="busy-progress" id="match-progress"></span>
+        </div>
+
+        <div class="groups-container" id="match-groups"></div>
+
+        <div class="results-block" id="match-results" hidden>
+          <h3 class="section-title">Топ-5 комбинаций
+            <span class="section-sub">по минимальной дисперсии средней салиентности</span>
+          </h3>
+          <div class="combo-list" id="match-combos"></div>
+          <div class="toolbar">
+            <span class="toolbar-spacer"></span>
+            <button class="btn" id="match-dl-csv" type="button">↓ CSV всех топ-5</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <footer class="page-footer">
+      <span class="foot-mark">◎</span>
+      <span>Локальный модуль · без серверной обработки · данные не покидают браузер</span>
+    </footer>
+
+  </main>
+
+  <!-- ==================== РУКОВОДСТВО ==================== -->
+  <div class="modal" id="helpModal" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-window" role="dialog" aria-labelledby="helpTitle">
+      <header class="modal-head">
+        <h2 class="modal-title" id="helpTitle">Руководство пользователя</h2>
+        <button class="modal-close" data-close type="button" aria-label="Закрыть">×</button>
+      </header>
+
+      <nav class="modal-nav" role="tablist">
+        <button class="modal-tab active" data-help="overview" type="button">О модуле</button>
+        <button class="modal-tab" data-help="single" type="button">Один стимул</button>
+        <button class="modal-tab" data-help="compare" type="button">Сравнение</button>
+        <button class="modal-tab" data-help="match" type="button">Подбор групп</button>
+        <button class="modal-tab" data-help="eyetracking" type="button">Айтрекинг</button>
+        <button class="modal-tab" data-help="metrics" type="button">Метрики и формулы</button>
+        <button class="modal-tab" data-help="next" type="button">Что делать дальше</button>
+        <button class="modal-tab" data-help="faq" type="button">Частые ошибки</button>
+      </nav>
+
+      <div class="modal-body">
+
+        <section class="help-section active" data-help-id="overview">
+          <h3>Зачем нужен этот модуль</h3>
+          <p>
+            В исследованиях зрительного восприятия — реакции на стимулы, поиск целевых
+            объектов, эмоциональная оценка изображений, нейровизуализация — низкоуровневые
+            визуальные свойства стимула (яркость, контраст, цвет, локальные перепады)
+            непреднамеренно влияют на ответ участника. Если в одном условии стимулы
+            «громче» по этим свойствам, а в другом «тише», это войдёт в зависимую
+            переменную как побочный фактор и будет ошибочно принято за эффект
+            экспериментальной манипуляции.
+          </p>
+          <p>
+            Модуль рассчитывает <strong>карту салиентности</strong> — двумерное
+            распределение визуальной заметности по изображению — и сводит её к семи
+            числовым метрикам, которыми удобно описывать стимул и сравнивать стимулы
+            между собой.
+          </p>
+
+          <h3>Что внутри</h3>
+          <ul>
+            <li><strong>Три алгоритма</strong>: FT (цветовая салиентность через CIE Lab),
+              DoG (многомасштабный контраст яркости), Local Contrast (быстрый локальный).</li>
+            <li><strong>Семь метрик</strong>: средняя и пиковая салиентность, энтропия,
+              отношение «центр/периферия», распространённость, координаты пика.</li>
+            <li><strong>Корреляция Пирсона</strong> между картами для оценки сходства.</li>
+            <li><strong>Автоматический подбор</strong> сбалансированных наборов
+              изображений из нескольких категорий.</li>
+            <li><strong>Экспорт</strong> в CSV, PNG и ZIP для отчётности и
+              включения в supplementary materials.</li>
+          </ul>
+
+          <h3>Как ориентироваться</h3>
+          <p>
+            Главная страница предлагает три задачи. Выберите ту, что ближе к вашей
+            экспериментальной ситуации. Возврат на главную — клик по логотипу
+            «Салиентность» в левом верхнем углу.
+          </p>
+          <p>
+            Когда вы внутри задачи, наверху появляется панель глобальных настроек:
+            метод оценки, цветовая карта тепловой визуализации, прозрачность оверлея.
+            Под селектором метода — короткое описание, какой алгоритм для каких
+            изображений лучше работает.
+          </p>
+          <p class="callout">
+            <strong>Конфиденциальность.</strong> Все вычисления выполняются локально
+            в браузере. Изображения никуда не передаются — модуль работает без
+            интернета после первой загрузки шрифтов.
+          </p>
+        </section>
+
+        <section class="help-section" data-help-id="single">
+          <h3>Анализ одного стимула</h3>
+          <p>
+            Базовый сценарий: у вас есть одно изображение и вы хотите понять, где на нём
+            визуальный фокус и насколько он выражен.
+          </p>
+
+          <h4>Пошагово</h4>
+          <ol>
+            <li>На главной нажмите карточку «Анализ одного стимула».</li>
+            <li>Выберите метод оценки в верхней панели. По умолчанию — FT (универсально
+              для цветных фотографий). Если изображение ч/б, графика или текстура,
+              переключите на DoG.</li>
+            <li>Перетащите файл в дроп-зону или нажмите «Выбрать файл». Поддерживаются
+              JPG, PNG, WebP, BMP.</li>
+            <li>Через ~200–400 мс появятся: тепловая карта поверх оригинала, семь метрик,
+              гистограмма распределения значений салиентности.</li>
+            <li>Нажмите на любую карточку метрики — снизу развернётся подробное
+              объяснение: формула, диапазоны интерпретации, как использовать в исследовании.</li>
+          </ol>
+
+          <h4>Что менять и зачем</h4>
+          <ul>
+            <li><strong>Метод оценки.</strong> При смене метода карта пересчитывается
+              автоматически. Сравните FT и DoG на своих стимулах: если FT даёт
+              «плоскую» карту с низкой энтропией, переключитесь на DoG.</li>
+            <li><strong>Цветовая карта.</strong> Jet — классика, контрастная.
+              Hot — мягче, лучше читается на печати. Gray — для иллюстраций в
+              статьях, где цвет не нужен. Не влияет на численные метрики.</li>
+            <li><strong>Прозрачность оверлея.</strong> Только для удобства просмотра.
+              Не влияет на расчёты и метрики.</li>
+            <li><strong>Скрыть тепловую карту.</strong> Кнопка справа от изображения —
+              временно показывает оригинал, чтобы сопоставить «на глаз».</li>
+          </ul>
+
+          <h4>Что забрать</h4>
+          <ul>
+            <li><strong>↓ PNG карта</strong> — тепловая карта в исходном разрешении файла,
+              отдельной картинкой с прозрачным фоном. Для иллюстраций.</li>
+            <li><strong>↓ PNG оверлей</strong> — оригинал и тепловая карта в одном
+              изображении. Удобно для презентаций и статей.</li>
+          </ul>
+        </section>
+
+        <section class="help-section" data-help-id="compare">
+          <h3>Сравнение нескольких стимулов</h3>
+          <p>
+            Когда у вас серия стимулов и нужно проверить, насколько они визуально
+            однородны — особенно перед тем, как использовать их в эксперименте.
+          </p>
+
+          <h4>Подрежим А — несколько изображений</h4>
+          <ol>
+            <li>Карточка «Сравнение нескольких стимулов» на главной.</li>
+            <li>Загрузите несколько файлов сразу: dropzone принимает до сотен изображений,
+              можно перетащить целую папку.</li>
+            <li>Каждое изображение получает свою тепловую карту и сводку метрик
+              (μ, peak, H, spread).</li>
+            <li>Ниже — матрица корреляций Пирсона между картами. Цветовая разметка:
+              <span class="badge ok">r ≥ 0.9</span> — высокое сходство,
+              <span class="badge warn">0.7 ≤ r &lt; 0.9</span> — умеренное,
+              <span class="badge err">r &lt; 0.7</span> — слабое.</li>
+            <li>Кнопка «↓ CSV» собирает таблицу метрик и матрицу корреляций
+              в один файл (UTF-8 BOM, открывается в Excel).</li>
+            <li>«↓ ZIP всех карт» — архив со всеми тепловыми картами в исходных
+              разрешениях.</li>
+          </ol>
+
+          <h4>Подрежим Б — составной стимул</h4>
+          <p>
+            Если ваш стимул — одно изображение, на котором уже размещены несколько
+            подстимулов в сетке (например, 2 лица рядом для парадигмы изменения,
+            или 4 объекта в matrix-задаче).
+          </p>
+          <ol>
+            <li>Переключитесь на вкладку «Составной стимул».</li>
+            <li>Загрузите изображение и выберите сетку: 2×1, 1×2 или 2×2.</li>
+            <li>Модуль режет изображение на равные регионы (без потери пикселей
+              на границах) и считает салиентность отдельно для каждого региона.</li>
+            <li>Под превью — карточки регионов и таблица попарного сравнения
+              (Pearson r и абсолютные разности μ, H, peak).</li>
+            <li>«↓ PNG составная карта» — единый PNG в исходном разрешении, где
+              каждый регион имеет свою тепловую карту, склеенную обратно в сетку.</li>
+          </ol>
+        </section>
+
+        <section class="help-section" data-help-id="match">
+          <h3>Подбор сбалансированных наборов</h3>
+          <p>
+            Самая «исследовательская» из задач. Полезна, когда дизайн эксперимента
+            требует подобрать стимулы из нескольких категорий так, чтобы они были
+            одинаково заметными — иначе различия в реакции на категории будут
+            частично объясняться различиями в салиентности.
+          </p>
+
+          <h4>Сценарий</h4>
+          <p>
+            Допустим, вам нужны 16 проб по схеме 4 (категории: лица / объекты /
+            пейзажи / абстракции) × 4 (повторения), и в каждой категории у вас есть
+            пул из 20–30 кандидатов. Задача — выбрать по одному из каждой категории
+            так, чтобы средняя салиентность четвёрки была сопоставимой.
+            Перебрать 20⁴ = 160 000 комбинаций вручную нереально.
+          </p>
+
+          <h4>Пошагово</h4>
+          <ol>
+            <li>Карточка «Подбор сбалансированных наборов» на главной.</li>
+            <li>По умолчанию создано две группы. Кнопка «+ Добавить группу» доводит
+              до четырёх. Имя группы можно отредактировать кликом по полю.</li>
+            <li>В каждую группу загрузите её кандидатов. Модуль сразу считает
+              салиентность каждого изображения.</li>
+            <li>Когда во всех группах есть хотя бы один файл, кнопка
+              «Найти лучшие комбинации» активируется. На ней написано общее число
+              комбинаций — на крупных пулах счёт может идти на сотни тысяч.</li>
+            <li>Алгоритм перебирает декартово произведение нон-блокирующими порциями
+              по 5 000 комбинаций (UI не зависает) и для каждой считает дисперсию
+              средних μ. Возвращает топ-5 с минимальной дисперсией.</li>
+            <li>Каждый результат — карточка с превью изображений 80×80, средним μ,
+              разбросом и сигмой комбинации. Лучшая комбинация выделена.</li>
+            <li>«↓ ZIP» рядом с комбинацией — все четыре оверлея в архиве, имена
+              включают название группы.</li>
+            <li>«↓ CSV всех топ-5» — таблица результатов для отчётности.</li>
+          </ol>
+
+          <h4>Совет</h4>
+          <p>
+            Подбирайте всё-таки «с запасом» — например, найдите 8 хороших комбинаций,
+            а используйте 4. Это позволит исключить кандидатов, которые «не дружат»
+            по другим критериям (содержание, узнаваемость, эмоциональная валентность).
+          </p>
+        </section>
+
+        <section class="help-section" data-help-id="eyetracking">
+          <h3>Сравнение карт айтрекинга и моделей салиентности</h3>
+          <p>
+            Этот сценарий — за пределами основного модуля. Открывается отдельной
+            страницей <code>eyetracking.html</code>: либо двойным кликом по файлу,
+            либо кнопкой <strong>«Айтрекинг»</strong> в правом верхнем углу
+            основного модуля.
+          </p>
+
+          <h4>Зачем</h4>
+          <p>
+            Модели салиентности (FT, DoG, Local, SR) описывают, что <em>может</em>
+            привлечь внимание по низкоуровневым визуальным признакам. Но фактическое
+            внимание участника определяется ещё задачей, опытом и индивидуальными
+            стратегиями просмотра. Когда у вас есть данные айтрекинга, имеет смысл
+            проверить численно: насколько ваши стимулы «ведутся» низкоуровневой
+            заметностью, а где взгляд участников расходится с предсказанием модели.
+            Это даёт количественное обоснование для обсуждения результатов.
+          </p>
+
+          <h4>Что нужно загрузить</h4>
+          <ol>
+            <li><strong>Стимул</strong> — изображение, которое предъявлялось участникам
+              (JPG/PNG/WebP/BMP). Желательно в том же разрешении, в каком оно показывалось
+              на экране.</li>
+            <li><strong>CSV-файл с фиксациями</strong>. Поддерживаются разделители
+              «;» и «,». Модуль автоматически распознаёт колонки <code>x_px</code>,
+              <code>y_px</code>, <code>type</code> (фиксация / саккада),
+              <code>dur_sec</code> (длительность), <code>result_name</code>
+              (ID участника), <code>stimulus</code>. Если в файле несколько
+              стимулов — выберете нужный из выпадающего списка.</li>
+          </ol>
+          <p>
+            Подходит выгрузка из стандартных пакетов (Tobii Pro Lab, BeGaze,
+            GazePoint, EyeLink Data Viewer, экспорт OGAMA). Если ваш формат
+            не распознаётся — переименуйте колонки в CSV вручную.
+          </p>
+
+          <h4>Параметры</h4>
+          <ul>
+            <li><strong>Метод салиентности</strong> — какой моделью строить карту
+              для сравнения. Рекомендуется попробовать FT и DoG, и зафиксировать
+              в отчёте оба значения.</li>
+            <li><strong>σ ядра KDE</strong> — размер гауссова ядра при построении
+              тепловой карты по точкам фиксаций. По умолчанию 30 px, что
+              соответствует ≈ 1° зрительного угла при типичных условиях
+              (60 см от монитора, 0.3 мм/px). Если ваши условия сильно отличаются —
+              скорректируйте.</li>
+          </ul>
+
+          <h4>Что считается</h4>
+          <table class="help-table">
+            <thead><tr><th>Метрика</th><th>Что показывает</th><th>Как читать</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><code>Pearson r</code></td>
+                <td>Линейная корреляция двух карт по всем пикселям</td>
+                <td>0 — нет связи; 0.3–0.5 — умеренная; 0.7+ — сильная</td>
+              </tr>
+              <tr>
+                <td><code>NSS</code></td>
+                <td>Z-нормированная салиентность в точках фиксаций (среднее)</td>
+                <td>0 — модель не лучше случайной; >1 — уверенно предсказывает фиксации</td>
+              </tr>
+              <tr>
+                <td><code>AUC-Judd</code></td>
+                <td>Площадь под ROC: salience как бинарный классификатор фиксаций</td>
+                <td>0.5 — случайно; 0.7–0.8 — типичный диапазон классических моделей</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h4>Что забрать</h4>
+          <ul>
+            <li><strong>↓ CSV отчёт</strong> — все три метрики плюс параметры расчёта
+              (метод, σ, число фиксаций, число участников).</li>
+            <li><strong>↓ ZIP всех карт</strong> — четыре PNG в исходном разрешении:
+              салиентность как карта, салиентность как оверлей на стимуле, тепловая
+              карта айтрекинга как карта, тепловая карта айтрекинга как оверлей.</li>
+          </ul>
+
+          <h4>Когда какой результат ожидать</h4>
+          <ul>
+            <li><strong>Высокая корреляция (r &gt; 0.5) и NSS &gt; 1.</strong>
+              Внимание участников ведётся в основном низкоуровневой заметностью.
+              Это нормально для свободного просмотра, но для эксперимента, где
+              ожидается влияние задачи, это может говорить о слабом влиянии
+              манипуляции.</li>
+            <li><strong>Низкая корреляция (r &lt; 0.2) и NSS ≈ 0.</strong>
+              Внимание идёт мимо низкоуровневой заметности — скорее всего,
+              ведётся семантикой, инструкцией или индивидуальной стратегией. Это
+              можно использовать как аргумент в Discussion: эффект не объясняется
+              визуальными свойствами.</li>
+            <li><strong>Расхождение между методами.</strong> Если FT даёт высокий
+              NSS, а SR — низкий, это говорит о цветовой природе фокуса внимания.
+              Полезно для интерпретации.</li>
+          </ul>
+
+          <p class="callout">
+            <strong>Важно.</strong> Метрики соответствия чувствительны к выбору
+            σ ядра KDE. Перед сравнением условий зафиксируйте σ и не меняйте его
+            между стимулами или участниками — иначе сравнение некорректно.
+          </p>
+        </section>
+
+        <section class="help-section" data-help-id="metrics">
+          <h3>Метрики и формулы</h3>
+          <p>
+            Краткая шпаргалка. Подробное описание каждой метрики с диапазонами
+            интерпретации появляется по клику на карточку метрики в Режиме 1.
+          </p>
+
+          <table class="help-table">
+            <thead><tr><th>Метрика</th><th>Формула</th><th>Что показывает</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><code>mean</code></td>
+                <td><code>Σ S(i) / N</code></td>
+                <td>Средний уровень салиентности по карте</td>
+              </tr>
+              <tr>
+                <td><code>peak</code></td>
+                <td><code>max(S) до нормировки</code></td>
+                <td>Сила самого яркого «магнита» в шкале метода</td>
+              </tr>
+              <tr>
+                <td><code>entropy</code></td>
+                <td><code>−Σ p · log₂(p)</code></td>
+                <td>Разнообразие значений (бит, по 64 бинам)</td>
+              </tr>
+              <tr>
+                <td><code>center_bias</code></td>
+                <td><code>μ_inner / μ_outer</code></td>
+                <td>Центральный сдвиг (радиус 0.7·min(cx, cy))</td>
+              </tr>
+              <tr>
+                <td><code>spread_pct</code></td>
+                <td><code>count(S &gt; 0.5) / N · 100</code></td>
+                <td>Доля «активной» площади, %</td>
+              </tr>
+              <tr>
+                <td><code>peak_x</code></td>
+                <td><code>argmax_x / W · 100</code></td>
+                <td>Горизонтальная позиция пика, %</td>
+              </tr>
+              <tr>
+                <td><code>peak_y</code></td>
+                <td><code>argmax_y / H · 100</code></td>
+                <td>Вертикальная позиция пика, %</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h4>Какие методы оценки доступны</h4>
+          <ul>
+            <li><strong>FT (Frequency-Tuned)</strong>, Achanta et al., 2009 — отклонение
+              цвета каждого пикселя от среднего цвета сцены в перцептивном пространстве
+              CIE Lab после слабого размытия. Универсально работает на цветных
+              фотографиях, лицах, природных сценах.</li>
+            <li><strong>DoG (Difference of Gaussians)</strong> — сумма разностей
+              гауссовых размытий на четырёх масштабах: (1, 2), (2, 4), (4, 8), (8, 16).
+              Реагирует на яркостные перепады разной частоты, не использует цвет.
+              Подходит для текстур и графики.</li>
+            <li><strong>Local Color Contrast</strong> — отклонение каждого пикселя от
+              локального среднего по большой окрестности (σ ≈ 8 % от размера).
+              Самый быстрый, годится для первичного скрининга.</li>
+          </ul>
+
+          <h4>О 256×256</h4>
+          <p>
+            Все алгоритмы работают на копии изображения, ресайзнутой до 256×256 —
+            это компромисс между точностью и скоростью. Тепловая карта при экспорте
+            интерполируется обратно в исходное разрешение бикубической интерполяцией.
+            Метрики устойчивы к этому ресайзу: при тестах разница mean между
+            разрешениями 256 и 512 редко превышает 0.005.
+          </p>
+        </section>
+
+        <section class="help-section" data-help-id="next">
+          <h3>Что делать с полученными числами</h3>
+
+          <h4>1. Описать стимулы в методе статьи</h4>
+          <p>
+            В разделе Methods → Stimuli приведите средние значения и стандартные
+            отклонения по серии. Минимум: <code>mean</code>, <code>spread_pct</code>,
+            <code>center_bias</code>. Этого достаточно, чтобы рецензент убедился, что
+            стимулы низкоуровнево сопоставимы.
+          </p>
+          <p>
+            Пример формулировки: <em>«Saliency maps были рассчитаны в браузерном модуле
+            Saliency (Achanta et al., 2009; FT-метод). Стимулы условия А и Б не различались
+            по средней салиентности (M_A = 0.21, SD = 0.04; M_B = 0.22, SD = 0.05;
+            t(58) = 0.71, p = 0.48)».</em>
+          </p>
+
+          <h4>2. Сравнить условия и проверить на конфаунды</h4>
+          <p>
+            Если ваш план — сравнение условий (например, «эмоциональные лица»
+            против «нейтральных»), прогоните каждый набор через Режим 2А и сравните
+            распределения метрик в условиях. Если t-тест по μ или spread_pct между
+            условиями значим — у вас потенциальный конфаунд: уравновесьте через Режим 3
+            или объясните в Discussion.
+          </p>
+
+          <h4>3. Использовать карты как ROI или маски</h4>
+          <p>
+            PNG-экспорт тепловой карты с прозрачным фоном можно использовать как
+            soft mask: например, для взвешивания фиксационных данных при анализе
+            айтрекинга. Или, бинаризовав по порогу (spread_pct = доля выше 0.5),
+            получить ROI «горячих зон».
+          </p>
+
+          <h4>4. Включить как supplementary</h4>
+          <p>
+            CSV-выгрузки и PNG-карты добавляют в supplementary materials —
+            это повышает воспроизводимость и упрощает рецензирование.
+          </p>
+
+          <h4>5. Что НЕ делать</h4>
+          <ul>
+            <li>Не трактуйте карту как «куда смотрит человек». Это нижняя граница —
+              что МОЖЕТ привлечь внимание по низкоуровневым признакам.
+              Реальные фиксации зависят от задачи и индивидуальных стратегий.</li>
+            <li>Не сравнивайте абсолютные peak между методами — у них разные шкалы.</li>
+            <li>Не интерпретируйте center_bias на изображениях нестандартного формата
+              (узкие панорамы, портретные пропорции) без поправки на форму кадра.</li>
+          </ul>
+        </section>
+
+        <section class="help-section" data-help-id="faq">
+          <h3>Частые ошибки и нюансы</h3>
+
+          <h4>«Карта плоская, ничего не видно»</h4>
+          <p>
+            Метод не подошёл изображению. Признак — низкая энтропия (&lt; 2). Что делать:
+            переключите метод. На монохромных и текстурных — DoG. На очень контрастных
+            цветных — попробуйте Local Contrast для разнообразия.
+          </p>
+
+          <h4>«peak всегда около 1»</h4>
+          <p>
+            Для нормально снятых изображений peak меньше единицы — он считается до
+            нормализации и зависит от масштаба контраста. Если действительно постоянно
+            ~1 у разных стимулов с разным методом — возможно, у вас слишком одинаковые
+            изображения. Проверьте корреляции через Режим 2А.
+          </p>
+
+          <h4>«Тепловая карта не пропадает после кнопки “Скрыть”»</h4>
+          <p>
+            Это известная проблема старых сборок (до версии текущей). Если у вас
+            ранняя версия — пересоберите <code>salience.html</code> командой
+            <code>py build.py</code>.
+          </p>
+
+          <h4>«Хочу подсчитать саму статистику между условиями»</h4>
+          <p>
+            Модуль не считает t-тесты и ANOVA — выгрузите CSV и импортируйте в R, JASP
+            или SPSS. CSV использует точку как десятичный разделитель и кодировку
+            UTF-8 BOM, чтобы корректно открывался в Excel и читался pandas без
+            дополнительных параметров.
+          </p>
+
+          <h4>«Очень большое изображение, всё медленно»</h4>
+          <p>
+            Все алгоритмы работают на 256×256 копии — расчёт занимает 100–400 мс
+            независимо от исходного размера. Медленный шаг — это первичное декодирование
+            и ресайз файла самим браузером. Изображения тяжелее ~50 МБ имеет смысл
+            заранее уменьшить.
+          </p>
+
+          <h4>«Что делать, если файл не загружается»</h4>
+          <p>
+            Поддерживаемые форматы: JPG, PNG, WebP, BMP. RAW-файлы (NEF, CR2, ARW) —
+            не поддерживаются, конвертируйте в JPG или PNG. HEIC поддерживается только
+            в Safari на macOS / iOS.
+          </p>
+
+          <h4>«Где сохраняются результаты»</h4>
+          <p>
+            Никаких результатов модуль не сохраняет — после закрытия вкладки всё пропадает.
+            Это сделано осознанно, чтобы не было проблем с приватностью. Сохраняйте CSV
+            и PNG вручную.
+          </p>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

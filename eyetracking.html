@@ -1,0 +1,5603 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Айтрекинг × Салиентность · сравнение карт</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+/* ============================================================
+   Салиентность — модуль анализа визуальной заметности
+   Тема: тёмная лабораторная, зелёный фосфорный акцент
+   ============================================================ */
+
+:root {
+  /* Палитра */
+  --bg:           #050a08;
+  --bg-elev:      #0a1410;
+  --bg-card:      rgba(18, 32, 24, 0.55);
+  --bg-card-hov:  rgba(28, 50, 36, 0.65);
+  --bg-input:    rgba(10, 22, 16, 0.7);
+
+  --grid-line:    rgba(74, 222, 128, 0.055);
+  --grid-line-2:  rgba(74, 222, 128, 0.025);
+
+  --green:        #4ade80;
+  --green-bright: #6dffaa;
+  --green-dim:    #2d6a4f;
+  --green-dark:   #1a3a2a;
+
+  /* Контрастность повышена — приглушённый текст теперь читаемее */
+  --text:         #d4ecd4;
+  --text-bright:  #f0faf0;
+  --text-dim:     #92bf94;
+  --text-mute:    #6a8a72;
+
+  --serif-cream:  #e2d8b2;
+  --serif-warm:   #ede2b8;
+
+  --border:       rgba(74, 222, 128, 0.18);
+  --border-hov:   rgba(74, 222, 128, 0.34);
+  --border-active:#4ade80;
+
+  --warn:         #f0a040;
+  --err:          #ff6b6b;
+  --ok:           #4ade80;
+
+  /* Типографика */
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+  --font-serif:   'Cormorant Garamond', 'Iowan Old Style', Georgia, serif;
+  --font-sans:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Размеры */
+  --radius:       4px;
+  --radius-lg:    8px;
+  --gap:          24px;
+  --gap-sm:       12px;
+
+  /* Тени и свечение */
+  --glow-green:   0 0 24px rgba(74, 222, 128, 0.18);
+  --glow-soft:    0 0 32px rgba(74, 222, 128, 0.08);
+}
+
+/* ============================================================
+   Сброс и базовые стили
+   ============================================================ */
+
+* { box-sizing: border-box; }
+
+/* Глобально уважать атрибут hidden — иначе display:flex/grid у других правил перебивает */
+[hidden] { display: none !important; }
+
+/* Доступность: явные focus-стили для клавиатурной навигации.
+   :focus-visible не даёт обводки на мышь-кликах, только на Tab. */
+:focus { outline: none; }
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible,
+.task-card:focus-visible,
+.metric-card:focus-visible,
+.modal-tab:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+/* На главной панель настроек не нужна — метод выбирается уже внутри задачи */
+body.on-home .settings-panel { display: none; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Длинные тексты — серифом для читаемости и менее «технического» ощущения */
+.prose, .home-tip-body p, .panel-desc, .task-desc, .home-tip-text,
+.explainer-row > span:not(.explainer-row-label):not(.explainer-formula),
+.histogram-explainer .he-val, .method-desc-val, .modal-body p,
+.modal-body li {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.emphasis {
+  color: var(--green);
+  font-weight: 500;
+  font-family: var(--font-sans);
+}
+
+body {
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Сетка-фон, как в Стимул·Лаб */
+.grid-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(var(--grid-line-2) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line-2) 1px, transparent 1px);
+  background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
+  background-position: -1px -1px, -1px -1px, -1px -1px, -1px -1px;
+  mask-image: radial-gradient(ellipse at center top, black 50%, transparent 95%);
+  -webkit-mask-image: radial-gradient(ellipse at center top, black 50%, transparent 95%);
+}
+
+/* ============================================================
+   Заголовок страницы
+   ============================================================ */
+
+.page-header {
+  position: relative;
+  z-index: 2;
+  padding: 28px 48px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.logo {
+  cursor: pointer;
+  transition: opacity 150ms ease;
+}
+
+.logo:hover { opacity: 0.85; }
+.logo:hover .logo-mark { color: var(--green-bright); }
+
+/* Шапка: блок действий справа */
+.header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Кнопка «Помощь» (она же — стиль для других кнопок-ссылок в шапке) */
+.help-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 9px 16px 9px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 150ms ease;
+  text-decoration: none;
+}
+
+.help-btn:hover {
+  border-color: var(--green);
+  color: var(--green-bright);
+  background: rgba(74, 222, 128, 0.05);
+}
+
+.help-mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-serif);
+}
+
+/* ============================================================
+   Модальное окно: руководство пользователя
+   ============================================================ */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 10, 8, 0.85);
+  backdrop-filter: blur(4px);
+}
+
+.modal-window {
+  position: relative;
+  width: 100%;
+  max-width: 920px;
+  max-height: calc(100vh - 64px);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  animation: modalIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 28px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(74, 222, 128, 0.03);
+}
+
+.modal-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--serif-warm);
+  letter-spacing: 0.2px;
+}
+
+.modal-close {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 18px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  transition: all 120ms ease;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  border-color: var(--err);
+  color: var(--err);
+}
+
+.modal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.modal-tab {
+  background: transparent;
+  border: 0;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 14px 12px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.modal-tab:hover {
+  color: var(--text);
+}
+
+.modal-tab.active {
+  color: var(--green);
+  border-bottom-color: var(--green);
+}
+
+.modal-body {
+  padding: 28px 32px 32px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.help-section { display: none; }
+.help-section.active {
+  display: block;
+  animation: fadeIn 200ms ease;
+}
+
+.help-section h3 {
+  margin: 0 0 12px;
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--serif-warm);
+  letter-spacing: 0.2px;
+}
+
+.help-section h3:not(:first-child) { margin-top: 28px; }
+
+.help-section h4 {
+  margin: 22px 0 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.help-section p {
+  margin: 0 0 12px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.help-section ul, .help-section ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.help-section li { margin-bottom: 6px; }
+
+.help-section li::marker { color: var(--green); }
+
+.help-section strong { color: var(--text-bright); font-weight: 600; }
+
+.help-section em { color: var(--text-dim); font-style: italic; }
+
+.help-section code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--green);
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+}
+
+.help-section .callout {
+  border-left: 2px solid var(--green);
+  background: rgba(74, 222, 128, 0.04);
+  padding: 12px 16px;
+  border-radius: 0 4px 4px 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  margin-top: 16px;
+}
+
+.help-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0 16px;
+  font-size: 13px;
+}
+
+.help-table th, .help-table td {
+  padding: 9px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-sans);
+  vertical-align: top;
+}
+
+.help-table th {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: rgba(74, 222, 128, 0.04);
+}
+
+.help-table code {
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.4px;
+  border: 1px solid currentColor;
+}
+.badge.ok   { color: var(--green); background: rgba(74, 222, 128, 0.1); }
+.badge.warn { color: var(--warn);  background: rgba(240, 160, 64, 0.1); }
+.badge.err  { color: var(--err);   background: rgba(255, 107, 107, 0.1); }
+
+@media (max-width: 720px) {
+  .modal { padding: 12px; }
+  .modal-head { padding: 16px 18px; }
+  .modal-title { font-size: 20px; }
+  .modal-nav { padding: 0 12px; gap: 0; }
+  .modal-tab { padding: 12px 8px; font-size: 10px; }
+  .modal-body { padding: 18px 22px; }
+  .help-section h3 { font-size: 19px; }
+}
+
+.logo {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+  text-decoration: none;
+  color: var(--serif-warm);
+  font-family: var(--font-serif);
+  font-size: 24px;
+  letter-spacing: 0.3px;
+}
+
+.logo-mark {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--green);
+  text-shadow: 0 0 12px rgba(74, 222, 128, 0.6);
+  position: relative;
+  top: -2px;
+}
+
+.logo-text {
+  font-weight: 500;
+}
+
+.logo-en {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: 0.4px;
+}
+
+/* Вкладки режимов */
+.mode-tabs {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px;
+  background: var(--bg-card);
+}
+
+.tab {
+  background: transparent;
+  border: 0;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  padding: 9px 18px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 2px;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.tab:hover {
+  color: var(--text);
+  background: rgba(74, 222, 128, 0.05);
+}
+
+.tab.active {
+  background: var(--green);
+  color: #04110a;
+  font-weight: 600;
+}
+
+.tab-num {
+  font-size: 10px;
+  opacity: 0.65;
+  font-weight: 400;
+}
+
+.tab.active .tab-num { opacity: 0.75; }
+
+/* ============================================================
+   Контейнер и общие блоки
+   ============================================================ */
+
+.container {
+  position: relative;
+  z-index: 1;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 48px 64px;
+}
+
+/* ============================================================
+   Панель глобальных настроек
+   ============================================================ */
+
+.settings-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  backdrop-filter: blur(2px);
+  margin-bottom: 32px;
+  overflow: hidden;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1.4fr;
+  gap: 0;
+}
+
+.setting {
+  padding: 18px 22px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.setting:last-child { border-right: 0; }
+
+.setting label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: var(--text-dim);
+  font-weight: 500;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.setting-val {
+  font-size: 11px;
+  color: var(--green);
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+/* Селекты */
+.select-wrap {
+  position: relative;
+}
+
+.select-wrap::after {
+  content: '▾';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--green);
+  pointer-events: none;
+  font-size: 12px;
+}
+
+select {
+  width: 100%;
+  background: var(--bg-input);
+  color: var(--text-bright);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 32px 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+select:hover { border-color: var(--border-hov); }
+
+select:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.12);
+}
+
+select option {
+  background: var(--bg-elev);
+  color: var(--text-bright);
+}
+
+/* Слайдер */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--green-dark);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--green);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18), 0 0 12px rgba(74, 222, 128, 0.4);
+  transition: box-shadow 120ms ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 0 5px rgba(74, 222, 128, 0.22), 0 0 16px rgba(74, 222, 128, 0.6);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: var(--green);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 0;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
+}
+
+/* Информационная строка */
+.info-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 22px;
+  background: rgba(74, 222, 128, 0.04);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  letter-spacing: 0.3px;
+  color: var(--text-dim);
+}
+
+.info-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.7);
+  animation: pulse 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(0.85); }
+}
+
+.info-text { flex: 1; }
+
+.info-method strong {
+  color: var(--green);
+  font-weight: 500;
+}
+
+/* ============================================================
+   Панели режимов
+   ============================================================ */
+
+.mode-panel { display: none; }
+.mode-panel.active {
+  display: block;
+  animation: fadeIn 200ms ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.panel-header {
+  margin-bottom: 28px;
+}
+
+.panel-title {
+  margin: 0 0 10px;
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-weight: 500;
+  color: var(--serif-warm);
+  letter-spacing: 0.2px;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  line-height: 1.2;
+}
+
+.panel-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--green);
+  font-weight: 500;
+  letter-spacing: 1px;
+  border: 1px solid var(--border);
+  padding: 3px 8px;
+  border-radius: 2px;
+}
+
+.panel-desc {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  max-width: 760px;
+  line-height: 1.65;
+}
+
+/* Заглушки этапов */
+.placeholder-block {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  padding: 80px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.placeholder-inner {
+  text-align: center;
+}
+
+.placeholder-icon {
+  font-size: 32px;
+  color: var(--green);
+  opacity: 0.4;
+  margin-bottom: 14px;
+}
+
+.placeholder-text {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--text);
+  letter-spacing: 0.5px;
+}
+
+.placeholder-sub {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-mute);
+  letter-spacing: 0.4px;
+}
+
+/* ============================================================
+   Гистограмма распределения салиентности (Режим 1)
+   ============================================================ */
+
+.histogram-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  padding: 16px 18px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.histogram-wrap canvas {
+  width: 100%;
+  height: auto;
+  max-height: 120px;
+  display: block;
+}
+
+.histogram-axis {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-mute);
+  letter-spacing: 0.4px;
+  padding: 0 2px;
+}
+
+.histogram-explainer {
+  margin-top: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--green-dim);
+  border-radius: var(--radius);
+  background: rgba(74, 222, 128, 0.025);
+}
+
+.histogram-explainer-title {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--serif-warm);
+  letter-spacing: 0.2px;
+  margin-bottom: 14px;
+}
+
+.histogram-explainer-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 24px;
+}
+
+.histogram-explainer-grid > div {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.he-key {
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  color: var(--green);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.he-val {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+/* ============================================================
+   Toast-уведомления
+   ============================================================ */
+
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+  pointer-events: none;
+  max-width: 400px;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px 10px 14px;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  color: var(--text);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  transform: translateX(110%);
+  opacity: 0;
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease;
+  border-left-width: 3px;
+}
+
+.toast.show {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.toast-mark {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.toast-error { border-left-color: var(--err); }
+.toast-error .toast-mark { background: var(--err); box-shadow: 0 0 8px var(--err); }
+
+.toast-success { border-left-color: var(--green); }
+.toast-success .toast-mark { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+.toast-info { border-left-color: var(--green-dim); }
+.toast-info .toast-mark { background: var(--green-dim); }
+
+.toast-msg { flex: 1; line-height: 1.45; }
+
+.toast-close {
+  background: transparent;
+  border: 0;
+  color: var(--text-mute);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+}
+
+.toast-close:hover { color: var(--text); }
+
+/* ============================================================
+   Айтрекинг-модуль (fixations.html) — специфичные стили
+   ============================================================ */
+
+.upload-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.upload-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.upload-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.upload-step {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--green);
+  border: 1px solid var(--border);
+  padding: 3px 8px;
+  border-radius: 2px;
+  letter-spacing: 1px;
+}
+
+.upload-card h3 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--serif-warm);
+  letter-spacing: 0.2px;
+}
+
+.upload-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  font-size: 12px;
+}
+
+.upload-tag {
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  color: var(--green);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+
+.upload-name {
+  color: var(--text-bright);
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.upload-meta {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.upload-replace {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  letter-spacing: 0.4px;
+}
+
+.upload-replace:hover {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.upload-mapping {
+  width: 100%;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-dim);
+  letter-spacing: 0.2px;
+  line-height: 1.7;
+}
+
+.upload-mapping strong { color: var(--text); margin-right: 6px; font-weight: 500; }
+.upload-mapping code {
+  color: var(--green);
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  font-size: 10.5px;
+}
+
+.settings-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+/* Поле «Размер кадра» */
+.frame-row {
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.frame-row-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.frame-row-fields {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.frame-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.frame-field input[type="number"] {
+  width: 80px;
+  background: var(--bg-input);
+  color: var(--text-bright);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.3px;
+}
+
+.frame-field input[type="number"]:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.12);
+}
+
+.frame-x {
+  color: var(--text-mute);
+  font-family: var(--font-mono);
+}
+
+.btn-small {
+  padding: 6px 10px;
+  font-size: 10px;
+  letter-spacing: 0.6px;
+}
+
+.frame-hint {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-mute);
+  margin-left: auto;
+  letter-spacing: 0.3px;
+}
+
+.frame-hint.frame-hint-ok strong { color: var(--green); }
+.frame-hint.frame-hint-warn { color: var(--warn); }
+.frame-hint.frame-hint-warn strong { color: var(--warn); }
+
+.run-row {
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-large {
+  padding: 12px 28px;
+  font-size: 13px;
+  letter-spacing: 0.8px;
+}
+
+.three-stage {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.stage-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.stage-card-head {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(74, 222, 128, 0.04);
+}
+
+.stage-card-title {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--serif-warm);
+  letter-spacing: 0.2px;
+}
+
+.stage-card-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.4px;
+  margin-top: 2px;
+}
+
+.stage-card-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  background: #000;
+}
+
+.stage-card-body canvas, .stage-card-body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.busy-overlay-inline {
+  position: relative;
+  inset: auto;
+  background: rgba(74, 222, 128, 0.05);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 720px) {
+  .upload-grid { grid-template-columns: 1fr; }
+  .settings-grid-3 { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   Подвал
+   ============================================================ */
+
+.page-footer {
+  margin-top: 64px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-mute);
+  letter-spacing: 0.4px;
+}
+
+.foot-mark {
+  color: var(--green);
+  opacity: 0.6;
+}
+
+/* ============================================================
+   Главное окно: секции и карточки задач
+   ============================================================ */
+
+/* Секционный заголовок */
+.home-section {
+  margin: 32px 0 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.home-section-after { margin-top: 40px; }
+
+.home-section-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--serif-warm);
+  letter-spacing: 0.2px;
+}
+
+.home-section-sub {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+
+/* Сетка карточек: 3 в ряд */
+.task-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+/* Старый список — оставлен для обратной совместимости */
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 32px;
+}
+
+.task-card {
+  display: grid;
+  grid-template-columns: 60px 60px 1fr 30px;
+  align-items: center;
+  gap: 22px;
+  padding: 22px 26px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  color: var(--text);
+  transition: all 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.task-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: var(--green);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.task-card:hover {
+  background: var(--bg-card-hov);
+  border-color: var(--border-hov);
+  transform: translateX(2px);
+  box-shadow: var(--glow-soft);
+}
+
+.task-card:hover::before { opacity: 1; }
+
+.task-num {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--text-mute);
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  border-radius: 2px;
+  align-self: start;
+}
+
+.task-card:hover .task-num {
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.task-icon {
+  font-size: 32px;
+  color: var(--green);
+  text-shadow: 0 0 14px rgba(74, 222, 128, 0.32);
+  align-self: center;
+  text-align: center;
+}
+
+.task-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.task-title {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--serif-warm);
+  letter-spacing: 0.2px;
+  line-height: 1.2;
+}
+
+.task-desc {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.task-when {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-mute);
+  letter-spacing: 0.8px;
+  margin-top: 6px;
+}
+
+.task-arrow {
+  font-size: 22px;
+  color: var(--text-mute);
+  font-family: var(--font-mono);
+  align-self: center;
+  text-align: center;
+  transition: color 150ms ease, transform 200ms ease;
+}
+
+.task-card:hover .task-arrow {
+  color: var(--green);
+  transform: translateX(4px);
+}
+
+/* ============================================================
+   Вертикальная карточка задачи (для .task-row 3-в-ряд)
+   ============================================================ */
+
+.task-card-v {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 22px 22px 50px;
+  position: relative;
+  text-align: left;
+  /* перекрываем grid из горизонтальной карточки */
+  grid-template-columns: none;
+}
+
+.task-card-v::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: var(--green);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.task-card-v:hover::before { opacity: 1; }
+
+.task-card-v.task-card-wide {
+  /* для одиночной карточки — занять всю ширину ряда */
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 80px 1fr 50px;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "icon title arrow"
+    "icon desc  arrow"
+    "icon when  arrow";
+  align-items: start;
+  column-gap: 24px;
+  row-gap: 6px;
+  padding: 22px 22px 22px 22px;
+}
+
+.task-card-wide .tc-head  { grid-area: icon; flex-direction: column; align-items: center; gap: 8px; align-self: start; }
+.task-card-wide .tc-title { grid-area: title; margin: 0; }
+.task-card-wide .tc-desc  { grid-area: desc; }
+.task-card-wide .tc-when  { grid-area: when; border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 4px; }
+.task-card-wide .tc-arrow { grid-area: arrow; position: static; align-self: center; text-align: right; }
+
+/* Вертикальные элементы карточки */
+.tc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tc-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--text-mute);
+  border: 1px solid var(--border);
+  padding: 3px 8px;
+  border-radius: 2px;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.task-card-v:hover .tc-num {
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.tc-icon {
+  font-size: 26px;
+  color: var(--green);
+  text-shadow: 0 0 14px rgba(74, 222, 128, 0.32);
+  line-height: 1;
+}
+
+.tc-title {
+  margin: 4px 0 0;
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 500;
+  color: var(--serif-warm);
+  letter-spacing: 0.2px;
+  line-height: 1.25;
+}
+
+.tc-desc {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.55;
+  flex: 1;
+}
+
+.tc-when {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-mute);
+  letter-spacing: 0.6px;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+  line-height: 1.55;
+}
+
+.tc-arrow {
+  position: absolute;
+  right: 18px;
+  bottom: 16px;
+  font-size: 20px;
+  color: var(--text-mute);
+  font-family: var(--font-mono);
+  transition: color 150ms ease, transform 200ms ease;
+}
+
+.task-card-v:hover .tc-arrow {
+  color: var(--green);
+  transform: translateX(3px);
+}
+
+@media (max-width: 880px) {
+  .task-row { grid-template-columns: 1fr; }
+  .task-card-v.task-card-wide {
+    grid-template-columns: 60px 1fr;
+    grid-template-areas:
+      "icon  title"
+      "icon  desc"
+      "icon  when"
+      "arrow arrow";
+    column-gap: 16px;
+  }
+  .task-card-wide .tc-arrow {
+    text-align: right;
+    padding-top: 8px;
+  }
+}
+
+/* Информационный блок снизу */
+.home-tip {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 16px;
+  padding: 22px 26px;
+  background: rgba(74, 222, 128, 0.04);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--green);
+  border-radius: var(--radius);
+}
+
+.home-tip-mark {
+  font-size: 22px;
+  color: var(--green);
+  text-shadow: 0 0 12px rgba(74, 222, 128, 0.5);
+}
+
+.home-tip-title {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--serif-warm);
+  margin-bottom: 12px;
+  letter-spacing: 0.2px;
+}
+
+.home-tip-body p {
+  margin: 0 0 10px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.7;
+}
+
+.home-tip-note {
+  color: var(--text-dim) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+  margin-top: 14px !important;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  letter-spacing: 0.2px;
+}
+
+/* ============================================================
+   Описание метода под селектором
+   ============================================================ */
+
+/* Описание метода — полная ширина под settings-grid */
+.method-desc {
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+  border-left: 2px solid var(--green);
+  background: rgba(74, 222, 128, 0.035);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  letter-spacing: 0.2px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.method-desc:empty { display: none !important; }
+
+.method-desc-title {
+  color: var(--green);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  font-size: 12px;
+}
+
+.method-desc-source {
+  color: var(--text-mute);
+  font-size: 11px;
+  margin-left: 6px;
+  font-style: italic;
+}
+
+.method-desc-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 14px;
+  align-items: baseline;
+}
+
+.method-desc-key {
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.method-desc-val {
+  color: var(--text);
+}
+
+.method-desc-pitfall .method-desc-key { color: var(--warn); }
+.method-desc-pitfall .method-desc-val { color: var(--text-dim); }
+
+/* ============================================================
+   Эксплейнер метрик
+   ============================================================ */
+
+.metrics-grid .metric-card {
+  cursor: pointer;
+  user-select: none;
+}
+
+.metrics-grid .metric-card.selected {
+  border-color: var(--green);
+  background: rgba(74, 222, 128, 0.08);
+  box-shadow: var(--glow-soft);
+}
+
+.metric-explainer {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  padding: 18px 22px;
+  min-height: 80px;
+  transition: border-color 180ms ease, background 180ms ease;
+}
+
+.metric-explainer.has-content {
+  border-color: var(--border-hov);
+  border-left: 2px solid var(--green);
+}
+
+.explainer-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-mute);
+  letter-spacing: 0.3px;
+  font-style: italic;
+}
+
+.explainer-arrow {
+  color: var(--green);
+  font-size: 16px;
+  font-style: normal;
+}
+
+.explainer-body { display: flex; flex-direction: column; gap: 12px; }
+
+.explainer-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.explainer-name {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--serif-warm);
+  letter-spacing: 0.2px;
+  line-height: 1.2;
+}
+
+.explainer-key {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--green);
+  letter-spacing: 0.6px;
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+
+.explainer-formula {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-bright);
+  background: var(--bg-elev);
+  padding: 8px 12px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  display: inline-block;
+  letter-spacing: 0.4px;
+}
+
+.explainer-row {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.explainer-row-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.explainer-read {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.explainer-read-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.explainer-read-key {
+  font-family: var(--font-mono);
+  color: var(--green);
+  letter-spacing: 0.4px;
+}
+
+/* ============================================================
+   Кнопки
+   ============================================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--bg-card);
+  color: var(--text-bright);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 18px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+  transition: all 120ms ease;
+  text-decoration: none;
+  user-select: none;
+}
+
+.btn:hover {
+  background: var(--bg-card-hov);
+  border-color: var(--border-hov);
+  color: var(--text-bright);
+}
+
+.btn:active { transform: translateY(1px); }
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--green);
+  color: #04110a;
+  border-color: var(--green);
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  background: var(--green-bright);
+  border-color: var(--green-bright);
+  color: #04110a;
+  box-shadow: 0 0 16px rgba(74, 222, 128, 0.3);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.btn-ghost:hover {
+  color: var(--text);
+  background: rgba(74, 222, 128, 0.05);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.control-icon {
+  color: var(--green);
+  font-size: 14px;
+}
+
+.btn-primary .control-icon { color: #04110a; }
+
+/* ============================================================
+   Dropzone
+   ============================================================ */
+
+.dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  padding: 64px 32px;
+  text-align: center;
+  transition: border-color 150ms ease, background 150ms ease;
+  cursor: pointer;
+  position: relative;
+}
+
+.dropzone:hover {
+  border-color: var(--border-hov);
+  background: var(--bg-card-hov);
+}
+
+.dropzone.drag-over {
+  border-color: var(--green);
+  background: rgba(74, 222, 128, 0.08);
+  box-shadow: var(--glow-soft);
+}
+
+.dropzone-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.dropzone-inner .btn {
+  pointer-events: auto;
+}
+
+.dropzone-icon {
+  font-size: 40px;
+  color: var(--green);
+  opacity: 0.65;
+  margin-bottom: 4px;
+  text-shadow: 0 0 16px rgba(74, 222, 128, 0.4);
+}
+
+.dropzone-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-bright);
+  letter-spacing: 0.4px;
+}
+
+.dropzone-or {
+  margin: 4px 0;
+  font-size: 11px;
+  color: var(--text-mute);
+  letter-spacing: 1px;
+}
+
+.dropzone-hint {
+  margin: 8px 0 0;
+  font-size: 10px;
+  color: var(--text-mute);
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+
+/* ============================================================
+   Блок результатов / Stage
+   ============================================================ */
+
+.results-block {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.file-name {
+  color: var(--text-bright);
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+.file-meta {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.file-info-tag {
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  color: var(--green);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+
+/* Stage: image + overlay */
+.stage-row {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 24px;
+  align-items: start;
+}
+
+.stage-wrap {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  overflow: hidden;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 12px;
+}
+
+.stage canvas, .stage img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 2px;
+}
+
+/* Busy overlay поверх stage */
+.busy-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 10, 8, 0.78);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--text-bright);
+  letter-spacing: 0.6px;
+  z-index: 5;
+}
+
+.busy-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--green-dark);
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Side panel: controls + legend + downloads */
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-label { flex: 1; text-align: left; }
+
+/* Легенда colormap */
+.legend {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.legend-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: var(--text-dim);
+}
+
+.legend-bar {
+  width: 100%;
+  height: 12px;
+  border-radius: 2px;
+  background-color: var(--green-dark);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  border: 1px solid var(--border);
+}
+
+.legend-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-mute);
+  letter-spacing: 0.4px;
+}
+
+/* ============================================================
+   Метрики
+   ============================================================ */
+
+.section-title {
+  margin: 8px 0 0;
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--serif-warm);
+  letter-spacing: 0.2px;
+  line-height: 1.25;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.metric-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.metric-card:hover {
+  border-color: var(--border-hov);
+  background: var(--bg-card-hov);
+}
+
+.metric-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.metric-value {
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-weight: 500;
+  color: var(--green);
+  line-height: 1;
+  letter-spacing: 0.3px;
+  text-shadow: 0 0 14px rgba(74, 222, 128, 0.18);
+}
+
+.metric-key {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-mute);
+  letter-spacing: 0.4px;
+}
+
+/* ============================================================
+   Подвкладки (sub-tabs внутри режима)
+   ============================================================ */
+
+.subtab-bar {
+  display: inline-flex;
+  gap: 0;
+  margin-bottom: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px;
+  background: var(--bg-card);
+}
+
+.subtab {
+  background: transparent;
+  border: 0;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.subtab:hover {
+  color: var(--text);
+  background: rgba(74, 222, 128, 0.05);
+}
+
+.subtab.active {
+  background: var(--green-dark);
+  color: var(--green-bright);
+  border: 1px solid var(--green);
+}
+
+.sub-panel { display: none; }
+.sub-panel.active {
+  display: block;
+  animation: fadeIn 200ms ease;
+}
+
+/* ============================================================
+   Тулбар + индикатор прогресса
+   ============================================================ */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.toolbar-info {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.6px;
+}
+
+.toolbar-spacer { flex: 1; }
+
+.busy-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(74, 222, 128, 0.05);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  color: var(--text-bright);
+  letter-spacing: 0.4px;
+}
+
+.busy-progress {
+  margin-left: auto;
+  color: var(--green);
+  font-size: 11px;
+}
+
+/* ============================================================
+   Сетка результатов (несколько изображений / регионы)
+   ============================================================ */
+
+.section-title { display: flex; align-items: baseline; gap: 12px; }
+.section-sub {
+  font-family: var(--font-mono);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.result-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.result-card:hover {
+  border-color: var(--border-hov);
+  transform: translateY(-1px);
+}
+
+.result-thumb {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  background: #000;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.result-thumb canvas, .result-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.result-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(5, 10, 8, 0.7);
+  color: var(--green);
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 3px 8px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  text-transform: uppercase;
+}
+
+.result-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(5, 10, 8, 0.85);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 120ms ease;
+  font-family: var(--font-mono);
+}
+
+.result-remove:hover {
+  border-color: var(--err);
+  color: var(--err);
+}
+
+.result-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.result-name {
+  font-size: 12px;
+  color: var(--text-bright);
+  letter-spacing: 0.3px;
+  word-break: break-all;
+  line-height: 1.35;
+}
+
+.result-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.result-stat strong {
+  color: var(--green);
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.result-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.result-actions .btn {
+  padding: 6px 10px;
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  flex: 1;
+}
+
+/* ============================================================
+   Корреляционная матрица
+   ============================================================ */
+
+.corr-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-bottom: 14px;
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.3px;
+}
+
+.corr-key {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  margin-right: 6px;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.corr-high { background: rgba(74, 222, 128, 0.55); border-color: var(--green); }
+.corr-mid  { background: rgba(240, 160, 64, 0.55); border-color: var(--warn); }
+.corr-low  { background: rgba(255, 107, 107, 0.55); border-color: var(--err); }
+
+.corr-matrix-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  overflow: auto;
+  max-width: 100%;
+}
+
+.corr-matrix {
+  border-collapse: collapse;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.corr-matrix th, .corr-matrix td {
+  padding: 8px 10px;
+  text-align: center;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  min-width: 64px;
+}
+
+.corr-matrix th {
+  background: rgba(74, 222, 128, 0.05);
+  color: var(--text-dim);
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.corr-matrix th.row-header {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: rgba(20, 38, 28, 0.95);
+}
+
+.corr-matrix td.cell-r-high {
+  background: rgba(74, 222, 128, 0.18);
+  color: var(--green-bright);
+}
+
+.corr-matrix td.cell-r-mid {
+  background: rgba(240, 160, 64, 0.16);
+  color: #ffd9a0;
+}
+
+.corr-matrix td.cell-r-low {
+  background: rgba(255, 107, 107, 0.14);
+  color: #ffb0b0;
+}
+
+.corr-matrix td.cell-r-self {
+  background: var(--bg-elev);
+  color: var(--text-mute);
+}
+
+/* ============================================================
+   Переключатель сетки (compound)
+   ============================================================ */
+
+.grid-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.grid-toggle button {
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--border);
+  padding: 7px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.grid-toggle button:last-child { border-right: 0; }
+
+.grid-toggle button:hover:not(.active) {
+  color: var(--text);
+  background: rgba(74, 222, 128, 0.05);
+}
+
+.grid-toggle button.active {
+  background: var(--green);
+  color: #04110a;
+  font-weight: 600;
+}
+
+/* Compound stage layout */
+.compound-stage {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 24px;
+  align-items: start;
+}
+
+.compound-preview {
+  min-height: 260px;
+  padding: 12px;
+}
+
+.compound-preview canvas, .compound-preview img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 2px;
+}
+
+.compound-side .info-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.info-block-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: var(--text-dim);
+}
+
+.info-block-text {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+/* ============================================================
+   Универсальная таблица данных
+   ============================================================ */
+
+.data-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  overflow: auto;
+  max-width: 100%;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.data-table th, .data-table td {
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.data-table th {
+  background: rgba(74, 222, 128, 0.05);
+  color: var(--text-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  font-weight: 500;
+}
+
+.data-table td.num {
+  font-family: var(--font-mono);
+  text-align: right;
+  color: var(--text-bright);
+}
+
+.data-table td.num.green { color: var(--green); }
+
+.data-table tbody tr:last-child td { border-bottom: 0; }
+.data-table tbody tr:hover { background: rgba(74, 222, 128, 0.04); }
+
+/* ============================================================
+   Группы (Режим 3)
+   ============================================================ */
+
+.groups-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.group-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(74, 222, 128, 0.04);
+}
+
+.group-num {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--green);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+
+.group-name {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  color: var(--text-bright);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  padding: 4px 0;
+  outline: none;
+}
+
+.group-name:focus {
+  border-bottom: 1px solid var(--green);
+}
+
+.group-count {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.4px;
+}
+
+.group-remove {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 120ms ease;
+  font-family: var(--font-mono);
+}
+
+.group-remove:hover:not(:disabled) {
+  border-color: var(--err);
+  color: var(--err);
+}
+
+.group-remove:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.group-load {
+  padding: 14px;
+  text-align: center;
+  border-bottom: 1px dashed var(--border);
+}
+
+.group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.group-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+}
+
+.group-item-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 2px;
+  background: #000;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.group-item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.group-item-name {
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.3px;
+}
+
+.group-item-mean {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.group-item-mean strong {
+  color: var(--green);
+  font-weight: 500;
+}
+
+.group-item-remove {
+  background: transparent;
+  border: 0;
+  color: var(--text-mute);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 2px;
+}
+
+.group-item-remove:hover {
+  color: var(--err);
+  background: rgba(255, 107, 107, 0.08);
+}
+
+.group-empty {
+  padding: 20px 14px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-mute);
+  letter-spacing: 0.4px;
+}
+
+/* ============================================================
+   Combo cards (топ-5)
+   ============================================================ */
+
+.combo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.combo-card {
+  display: grid;
+  grid-template-columns: 80px 1fr auto;
+  gap: 16px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  padding: 14px 16px;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.combo-card:hover {
+  border-color: var(--border-hov);
+}
+
+.combo-card.rank-1 {
+  border-color: var(--green);
+  background: rgba(74, 222, 128, 0.06);
+  box-shadow: var(--glow-soft);
+}
+
+.combo-rank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.combo-rank-num {
+  font-family: var(--font-serif);
+  font-size: 36px;
+  font-weight: 500;
+  color: var(--green);
+  line-height: 1;
+}
+
+.combo-card.rank-1 .combo-rank-num {
+  text-shadow: 0 0 16px rgba(74, 222, 128, 0.5);
+}
+
+.combo-rank-label {
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.combo-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.combo-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.combo-stat-row .stat-key {
+  color: var(--text-mute);
+  margin-right: 4px;
+}
+
+.combo-stat-row .stat-val {
+  color: var(--green);
+  font-weight: 500;
+}
+
+.combo-items {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.combo-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 90px;
+  text-align: center;
+}
+
+.combo-item-thumb {
+  width: 80px;
+  height: 80px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  position: relative;
+  background: #000;
+}
+
+.combo-item-thumb canvas, .combo-item-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.combo-item-group {
+  font-size: 9px;
+  color: var(--green);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.combo-item-name {
+  font-size: 10px;
+  color: var(--text);
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.combo-item-mean {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.combo-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.combo-actions .btn {
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   Адаптив
+   ============================================================ */
+
+@media (max-width: 880px) {
+  .page-header { padding: 20px 24px 0; }
+  .container { padding: 24px 24px 48px; }
+  .settings-grid { grid-template-columns: 1fr; }
+  .setting { border-right: 0; border-bottom: 1px solid var(--border); }
+  .setting:last-child { border-bottom: 0; }
+  .panel-title { font-size: 26px; }
+  .stage-row { grid-template-columns: 1fr; }
+  .compound-stage { grid-template-columns: 1fr; }
+  .combo-card { grid-template-columns: 1fr; gap: 12px; }
+  .combo-rank { flex-direction: row; align-items: baseline; }
+  .task-card { grid-template-columns: 50px 1fr; gap: 14px; padding: 18px; }
+  .task-num { display: none; }
+  .task-arrow { display: none; }
+  .task-icon { font-size: 24px; }
+  .task-title { font-size: 18px; }
+  .explainer-row { grid-template-columns: 1fr; }
+  .explainer-read-row { grid-template-columns: 1fr; }
+  .home-tip { grid-template-columns: 30px 1fr; gap: 12px; padding: 16px; }
+  .method-desc-row { grid-template-columns: 1fr; gap: 4px; }
+  .histogram-explainer-grid { grid-template-columns: 1fr; }
+  .histogram-explainer-grid > div { grid-template-columns: 1fr; gap: 4px; }
+}
+
+@media (max-width: 560px) {
+  .page-header { flex-direction: column; align-items: flex-start; }
+  .mode-tabs { width: 100%; }
+  .tab { flex: 1; padding: 9px 6px; }
+  .tab-num { display: none; }
+  .info-bar { flex-direction: column; align-items: flex-start; }
+}
+
+</style>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
+</head>
+<body>
+  <div class="grid-bg" aria-hidden="true"></div>
+
+  <header class="page-header">
+    <a class="logo" href="salience.html" title="К основному модулю салиентности">
+      <span class="logo-mark">↔</span>
+      <span class="logo-text">Айтрекинг × Салиентность</span>
+      <span class="logo-en">(Eye-tracking ↔ Saliency)</span>
+    </a>
+    <div class="header-actions">
+      <a class="help-btn" href="salience.html#help-eyetracking" title="Открыть руководство">
+        <span class="help-mark">?</span>
+        <span>Помощь</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <header class="panel-header">
+      <h2 class="panel-title">
+        <span class="panel-num">↔</span>
+        Сравнение айтрекинга и моделей салиентности
+      </h2>
+      <p class="panel-desc">
+        Загрузите стимул и CSV с координатами фиксаций. Модуль построит карту салиентности
+        выбранным методом (FT, DoG, Local Contrast, Spectral Residual) и тепловую карту
+        ваших айтрекерных данных через KDE, после чего рассчитает три стандартные метрики
+        соответствия: Pearson r, NSS и AUC-Judd.
+      </p>
+    </header>
+
+    <!-- ==================== ЗАГРУЗКА ==================== -->
+    <section class="upload-grid">
+      <div class="upload-card">
+        <div class="upload-card-head">
+          <span class="upload-step">01</span>
+          <h3>Стимул</h3>
+        </div>
+        <div class="dropzone" id="stim-dropzone">
+          <input type="file" id="stim-file" accept="image/jpeg,image/png,image/webp,image/bmp" hidden>
+          <div class="dropzone-inner">
+            <div class="dropzone-icon">⤓</div>
+            <p class="dropzone-text">Перетащите изображение</p>
+            <button class="btn btn-primary" id="stim-pick" type="button">Выбрать файл</button>
+            <p class="dropzone-hint">JPG · PNG · WebP · BMP</p>
+          </div>
+        </div>
+        <div class="upload-info" id="stim-info" hidden></div>
+      </div>
+
+      <div class="upload-card">
+        <div class="upload-card-head">
+          <span class="upload-step">02</span>
+          <h3>Фиксации (CSV)</h3>
+        </div>
+        <div class="dropzone" id="csv-dropzone">
+          <input type="file" id="csv-file" accept=".csv,.tsv,.txt" hidden>
+          <div class="dropzone-inner">
+            <div class="dropzone-icon">⤓</div>
+            <p class="dropzone-text">Перетащите CSV-файл</p>
+            <button class="btn btn-primary" id="csv-pick" type="button">Выбрать файл</button>
+            <p class="dropzone-hint">x_px, y_px, type · разделитель «;» или «,»</p>
+          </div>
+        </div>
+        <div class="upload-info" id="csv-info" hidden></div>
+      </div>
+    </section>
+
+    <!-- ==================== ПАРАМЕТРЫ ==================== -->
+    <section class="settings-panel" id="params" hidden>
+      <div class="settings-grid settings-grid-3">
+        <div class="setting">
+          <label for="param-method">Метод салиентности</label>
+          <div class="select-wrap">
+            <select id="param-method">
+              <option value="ft">FT — Frequency-Tuned</option>
+              <option value="dog">DoG — Difference of Gaussians</option>
+              <option value="local">Local Color Contrast</option>
+              <option value="sr">SR — Spectral Residual</option>
+            </select>
+          </div>
+        </div>
+        <div class="setting">
+          <label for="param-sigma">σ ядра KDE, px <span class="setting-val" id="param-sigma-val">30</span></label>
+          <input type="range" id="param-sigma" min="5" max="100" value="30">
+        </div>
+        <div class="setting">
+          <label for="param-stim-filter">Стимул</label>
+          <div class="select-wrap">
+            <select id="param-stim-filter">
+              <option value="">— нет данных —</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="frame-row">
+        <div class="frame-row-label">Размер кадра, в котором регистрировались координаты</div>
+        <div class="frame-row-fields">
+          <label class="frame-field">
+            <span>W, px</span>
+            <input type="number" id="frame-w" min="1" step="1">
+          </label>
+          <span class="frame-x">×</span>
+          <label class="frame-field">
+            <span>H, px</span>
+            <input type="number" id="frame-h" min="1" step="1">
+          </label>
+          <button class="btn btn-ghost btn-small" id="frame-reset" type="button" title="Использовать размер изображения">
+            ↺ из изображения
+          </button>
+          <span class="frame-hint" id="frame-hint"></span>
+        </div>
+      </div>
+
+      <div class="run-row">
+        <button class="btn btn-primary btn-large" id="run-btn" type="button" disabled>
+          Сравнить карты
+        </button>
+      </div>
+    </section>
+
+    <!-- ==================== РЕЗУЛЬТАТЫ ==================== -->
+    <section class="results-block" id="results" hidden>
+      <div class="busy-overlay busy-overlay-inline" id="busy" hidden>
+        <span class="busy-spinner"></span>
+        <span class="busy-text">…</span>
+      </div>
+
+      <h3 class="section-title">Метрики соответствия
+        <span class="section-sub">насколько модель салиентности предсказывает реальные фиксации</span>
+      </h3>
+      <div class="metrics-grid" id="eval-metrics"></div>
+
+      <h3 class="section-title">Карты
+        <span class="section-sub">наложение поверх стимула</span>
+      </h3>
+      <div class="three-stage" id="stage-row"></div>
+
+      <div class="toolbar" style="margin-top:24px">
+        <span class="toolbar-spacer"></span>
+        <button class="btn" id="dl-csv" type="button">↓ CSV отчёт</button>
+        <button class="btn btn-primary" id="dl-zip" type="button">↓ ZIP всех карт</button>
+      </div>
+    </section>
+
+    <footer class="page-footer">
+      <span class="foot-mark">◎</span>
+      <span>Локальный модуль · все вычисления в браузере · данные не покидают компьютер</span>
+    </footer>
+
+  </main>
+
+  <script>
+/* ============= js/algorithms/util.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     util.js — общие утилиты для всех алгоритмов салиентности
+     ============================================================ */
+
+  /**
+   * Нормировать массив в [0, 1]. Возвращает новый Float32Array.
+   *
+   * Дополнительно прикрепляет к возвращаемому массиву свойства
+   * `rawMin` и `rawMax` — минимум и максимум ДО нормализации.
+   * Это нужно метрике `peak`: после нормализации max(S) всегда = 1.0,
+   * поэтому информативная пиковая салиентность — это max сырой карты.
+   */
+  function normalize(map) {
+    const N = map.length;
+    let min = Infinity, max = -Infinity;
+    for (let i = 0; i < N; i++) {
+      const v = map[i];
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    const out = new Float32Array(N);
+    const range = max - min;
+    if (range !== 0) {
+      for (let i = 0; i < N; i++) {
+        out[i] = (map[i] - min) / range;
+      }
+    }
+    // Сохраняем сырой диапазон как свойства массива
+    out.rawMin = min;
+    out.rawMax = max;
+    return out;
+  }
+  // expose
+  window.normalize = normalize;
+})();
+
+/* ============= js/algorithms/blur.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     blur.js — разделяемое гауссово размытие (O(N·k))
+     Два прохода: горизонтальный → вертикальный, clamp-to-edge.
+     ============================================================ */
+
+  /**
+   * Размывает одноканальный массив (Float32Array, размер width*height)
+   * с заданным sigma. Возвращает новый Float32Array.
+   */
+  function gaussBlur1D(src, width, height, sigma) {
+    if (sigma <= 0) return new Float32Array(src);
+
+    const kernelSize = Math.max(3, 2 * Math.ceil(3 * sigma) + 1);
+    const half = (kernelSize - 1) >> 1;
+
+    // Веса ядра, нормированные к сумме = 1
+    const kernel = new Float32Array(kernelSize);
+    const s2 = 2 * sigma * sigma;
+    let sum = 0;
+    for (let i = 0; i < kernelSize; i++) {
+      const x = i - half;
+      const v = Math.exp(-(x * x) / s2);
+      kernel[i] = v;
+      sum += v;
+    }
+    for (let i = 0; i < kernelSize; i++) kernel[i] /= sum;
+
+    const temp = new Float32Array(width * height);
+
+    // Горизонтальный проход: src → temp
+    for (let y = 0; y < height; y++) {
+      const row = y * width;
+      for (let x = 0; x < width; x++) {
+        let acc = 0;
+        for (let k = 0; k < kernelSize; k++) {
+          let xi = x + k - half;
+          if (xi < 0) xi = 0;
+          else if (xi >= width) xi = width - 1;
+          acc += src[row + xi] * kernel[k];
+        }
+        temp[row + x] = acc;
+      }
+    }
+
+    // Вертикальный проход: temp → out
+    const out = new Float32Array(width * height);
+    for (let y = 0; y < height; y++) {
+      const row = y * width;
+      for (let x = 0; x < width; x++) {
+        let acc = 0;
+        for (let k = 0; k < kernelSize; k++) {
+          let yi = y + k - half;
+          if (yi < 0) yi = 0;
+          else if (yi >= height) yi = height - 1;
+          acc += temp[yi * width + x] * kernel[k];
+        }
+        out[row + x] = acc;
+      }
+    }
+
+    return out;
+  }
+  // expose
+  window.gaussBlur1D = gaussBlur1D;
+})();
+
+/* ============= js/algorithms/color.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     color.js — преобразования цветовых пространств
+     sRGB → CIE Lab (через линеаризацию и XYZ, белая точка D65),
+     а также извлечение grayscale и нормированных RGB-каналов.
+     ============================================================ */
+
+  const T = 0.008856;
+  const F_OFFSET = 16 / 116; // ≈ 0.137931034
+
+  /**
+   * sRGB → CIE Lab.
+   * Возвращает три Float32Array (L*, a*, b*) длины width*height.
+   */
+  function rgbToLab(imageData) {
+    const { data, width, height } = imageData;
+    const N = width * height;
+    const L = new Float32Array(N);
+    const A = new Float32Array(N);
+    const B = new Float32Array(N);
+
+    for (let i = 0; i < N; i++) {
+      const idx = i * 4;
+      const rn = data[idx]     / 255;
+      const gn = data[idx + 1] / 255;
+      const bn = data[idx + 2] / 255;
+
+      // sRGB linearize
+      const R  = rn > 0.04045 ? Math.pow((rn + 0.055) / 1.055, 2.4) : rn / 12.92;
+      const G  = gn > 0.04045 ? Math.pow((gn + 0.055) / 1.055, 2.4) : gn / 12.92;
+      const Bl = bn > 0.04045 ? Math.pow((bn + 0.055) / 1.055, 2.4) : bn / 12.92;
+
+      // Linear RGB → XYZ (D65), уже отмасштабированный к референсной белой точке
+      const X = (R * 0.4124 + G * 0.3576 + Bl * 0.1805) / 0.95047;
+      const Y =  R * 0.2126 + G * 0.7152 + Bl * 0.0722;
+      const Z = (R * 0.0193 + G * 0.1192 + Bl * 0.9505) / 1.08883;
+
+      const fX = X > T ? Math.cbrt(X) : 7.787 * X + F_OFFSET;
+      const fY = Y > T ? Math.cbrt(Y) : 7.787 * Y + F_OFFSET;
+      const fZ = Z > T ? Math.cbrt(Z) : 7.787 * Z + F_OFFSET;
+
+      L[i] = 116 * fY - 16;
+      A[i] = 500 * (fX - fY);
+      B[i] = 200 * (fY - fZ);
+    }
+
+    return { L, A, B, width, height };
+  }
+
+  /** Извлечь яркость (Float32Array) по формуле Rec.601. */
+  function rgbToGray(imageData) {
+    const { data, width, height } = imageData;
+    const N = width * height;
+    const out = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const idx = i * 4;
+      out[i] = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+    }
+    return out;
+  }
+
+  /** Извлечь R, G, B как Float32Array в [0, 1]. */
+  function rgbChannels(imageData) {
+    const { data, width, height } = imageData;
+    const N = width * height;
+    const R = new Float32Array(N);
+    const G = new Float32Array(N);
+    const B = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const idx = i * 4;
+      R[i] = data[idx]     / 255;
+      G[i] = data[idx + 1] / 255;
+      B[i] = data[idx + 2] / 255;
+    }
+    return { R, G, B, width, height };
+  }
+  // expose
+  window.rgbToLab = rgbToLab;
+  window.rgbToGray = rgbToGray;
+  window.rgbChannels = rgbChannels;
+})();
+
+/* ============= js/algorithms/fft.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     fft.js — Cooley-Tukey radix-2 FFT (1D и разделяемое 2D).
+     Используется только методом Spectral Residual.
+
+     Размер должен быть степенью двойки. Spectral Residual работает
+     на 64×64 — для этого размера cost FFT пренебрежимо мал.
+     ============================================================ */
+
+  /**
+   * In-place 1D FFT (Cooley-Tukey radix-2).
+   * @param {Float32Array} real — вещественная часть (n элементов)
+   * @param {Float32Array} imag — мнимая часть (n элементов)
+   * @param {number} n — длина (должна быть степенью двойки)
+   * @param {boolean} inverse — true для обратного преобразования
+   */
+  function fft1d(real, imag, n, inverse = false) {
+    // Бит-реверсная перестановка
+    let j = 0;
+    for (let i = 1; i < n; i++) {
+      let bit = n >> 1;
+      while (j & bit) {
+        j ^= bit;
+        bit >>= 1;
+      }
+      j ^= bit;
+      if (i < j) {
+        let t = real[i]; real[i] = real[j]; real[j] = t;
+        t = imag[i]; imag[i] = imag[j]; imag[j] = t;
+      }
+    }
+
+    // Бабочки Cooley-Tukey
+    for (let len = 2; len <= n; len <<= 1) {
+      const halfLen = len >> 1;
+      const angle = (inverse ? 2 : -2) * Math.PI / len;
+      const wRe = Math.cos(angle);
+      const wIm = Math.sin(angle);
+      for (let i = 0; i < n; i += len) {
+        let curRe = 1, curIm = 0;
+        for (let k = 0; k < halfLen; k++) {
+          const idx0 = i + k;
+          const idx1 = i + k + halfLen;
+          const evenRe = real[idx0];
+          const evenIm = imag[idx0];
+          const oddRe = real[idx1] * curRe - imag[idx1] * curIm;
+          const oddIm = real[idx1] * curIm + imag[idx1] * curRe;
+          real[idx0] = evenRe + oddRe;
+          imag[idx0] = evenIm + oddIm;
+          real[idx1] = evenRe - oddRe;
+          imag[idx1] = evenIm - oddIm;
+          const tRe = curRe * wRe - curIm * wIm;
+          curIm = curRe * wIm + curIm * wRe;
+          curRe = tRe;
+        }
+      }
+    }
+
+    // Нормировка для обратного преобразования
+    if (inverse) {
+      for (let i = 0; i < n; i++) {
+        real[i] /= n;
+        imag[i] /= n;
+      }
+    }
+  }
+
+  /**
+   * 2D FFT через раздельные 1D-преобразования по строкам и столбцам.
+   * Изменяет real и imag in-place. Размер width и height — степени двойки.
+   */
+  function fft2d(real, imag, width, height, inverse = false) {
+    // По строкам
+    const rowRe = new Float32Array(width);
+    const rowIm = new Float32Array(width);
+    for (let y = 0; y < height; y++) {
+      const off = y * width;
+      for (let x = 0; x < width; x++) {
+        rowRe[x] = real[off + x];
+        rowIm[x] = imag[off + x];
+      }
+      fft1d(rowRe, rowIm, width, inverse);
+      for (let x = 0; x < width; x++) {
+        real[off + x] = rowRe[x];
+        imag[off + x] = rowIm[x];
+      }
+    }
+
+    // По столбцам
+    const colRe = new Float32Array(height);
+    const colIm = new Float32Array(height);
+    for (let x = 0; x < width; x++) {
+      for (let y = 0; y < height; y++) {
+        colRe[y] = real[y * width + x];
+        colIm[y] = imag[y * width + x];
+      }
+      fft1d(colRe, colIm, height, inverse);
+      for (let y = 0; y < height; y++) {
+        real[y * width + x] = colRe[y];
+        imag[y * width + x] = colIm[y];
+      }
+    }
+  }
+  // expose
+  window.fft1d = fft1d;
+  window.fft2d = fft2d;
+})();
+
+/* ============= js/algorithms/ft.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     ft.js — Frequency-Tuned Saliency (Achanta et al., 2009)
+     ============================================================ */
+
+
+  function ftSaliency(imageData) {
+    const { L, A, B, width, height } = rgbToLab(imageData);
+    const N = L.length;
+
+    // Среднее по каждому каналу
+    let sumL = 0, sumA = 0, sumB = 0;
+    for (let i = 0; i < N; i++) {
+      sumL += L[i];
+      sumA += A[i];
+      sumB += B[i];
+    }
+    const muL = sumL / N;
+    const muA = sumA / N;
+    const muB = sumB / N;
+
+    // Гауссово размытие каждого канала
+    const sigma = 0.025 * Math.min(width, height);
+    const Lb = gaussBlur1D(L, width, height, sigma);
+    const Ab = gaussBlur1D(A, width, height, sigma);
+    const Bb = gaussBlur1D(B, width, height, sigma);
+
+    // Карта: квадрат расстояния от среднего до размытого
+    const S = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const dL = muL - Lb[i];
+      const dA = muA - Ab[i];
+      const dB = muB - Bb[i];
+      S[i] = dL * dL + dA * dA + dB * dB;
+    }
+
+    return normalize(S);
+  }
+  // expose
+  window.ftSaliency = ftSaliency;
+})();
+
+/* ============= js/algorithms/dog.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     dog.js — Difference-of-Gaussians (многомасштабный контраст яркости)
+     ============================================================ */
+
+
+  const SCALE_PAIRS = [
+    [1, 2],
+    [2, 4],
+    [4, 8],
+    [8, 16],
+  ];
+
+  function dogSaliency(imageData) {
+    const gray = rgbToGray(imageData);
+    const { width, height } = imageData;
+    const N = width * height;
+    const S = new Float32Array(N);
+
+    for (const [s1, s2] of SCALE_PAIRS) {
+      const g1 = gaussBlur1D(gray, width, height, s1);
+      const g2 = gaussBlur1D(gray, width, height, s2);
+      for (let i = 0; i < N; i++) {
+        S[i] += Math.abs(g1[i] - g2[i]);
+      }
+    }
+
+    return normalize(S);
+  }
+  // expose
+  window.dogSaliency = dogSaliency;
+})();
+
+/* ============= js/algorithms/local.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     local.js — Local Color Contrast (быстрый скрининговый метод)
+     ============================================================ */
+
+
+  function localContrastSaliency(imageData) {
+    const { R, G, B, width, height } = rgbChannels(imageData);
+    const N = R.length;
+
+    const sigma = 0.08 * Math.min(width, height);
+    const Rb = gaussBlur1D(R, width, height, sigma);
+    const Gb = gaussBlur1D(G, width, height, sigma);
+    const Bb = gaussBlur1D(B, width, height, sigma);
+
+    const S = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const dR = R[i] - Rb[i];
+      const dG = G[i] - Gb[i];
+      const dB = B[i] - Bb[i];
+      S[i] = dR * dR + dG * dG + dB * dB;
+    }
+
+    return normalize(S);
+  }
+  // expose
+  window.localContrastSaliency = localContrastSaliency;
+})();
+
+/* ============= js/algorithms/sr.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     sr.js — Spectral Residual Saliency (Hou & Zhang, 2007).
+
+     Логика:
+       1. Перевод в grayscale, ресайз до 64×64 (стандарт SR).
+       2. 2D FFT → амплитуда A, фаза P, лог-амплитуда L = log(A).
+       3. Сглаженный лог-спектр Q = mean3x3(L).
+       4. Спектральный остаток R = L − Q.
+       5. Реконструкция: inverse FFT( exp(R) · e^{iP} ).
+       6. Карта = |reconstructed|².
+       7. Гауссово размытие (σ = 8 для 64×64).
+       8. Билинейный апскейл до 256×256, нормировка в [0, 1].
+
+     Размер 64×64 фиксированный — степень двойки, нужен для radix-2 FFT.
+     На малом размере SR обычно работает лучше, чем на большом, и это
+     соответствует оригинальной публикации.
+     ============================================================ */
+
+
+  const SR_SIZE = 64;        // FFT работает на 64×64
+  const FINAL_SIZE = 256;    // Для согласованности с другими методами
+  const SR_LOG_SIGMA = 8;    // σ финального гауссова размытия (на 64×64)
+  const LOG_KERNEL = 3;      // окно усреднения лог-спектра (3×3 по оригиналу)
+  const EPS = 1e-10;         // защита логарифма от нуля
+
+  function spectralResidualSaliency(imageData) {
+    const { width: srcW, height: srcH } = imageData;
+
+    // Шаг 1: яркость + downsample 64×64 box-усреднением
+    const gray = rgbToGray(imageData);
+    const small = downsample(gray, srcW, srcH, SR_SIZE, SR_SIZE);
+
+    const N = SR_SIZE * SR_SIZE;
+    const real = new Float32Array(N);
+    const imag = new Float32Array(N);
+    for (let i = 0; i < N; i++) real[i] = small[i];
+
+    // Шаг 2: прямое 2D FFT
+    fft2d(real, imag, SR_SIZE, SR_SIZE, false);
+
+    // Шаг 3: лог-амплитуда L и фаза P
+    const logAmp = new Float32Array(N);
+    const phase  = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const A = Math.sqrt(real[i] * real[i] + imag[i] * imag[i]);
+      logAmp[i] = Math.log(A < EPS ? EPS : A);
+      phase[i]  = Math.atan2(imag[i], real[i]);
+    }
+
+    // Шаг 4: сглаженный лог-спектр Q = box(L, 3×3)
+    const Q = boxFilter(logAmp, SR_SIZE, SR_SIZE, LOG_KERNEL);
+
+    // Шаг 5: остаток R = L − Q; собираем комплексный сигнал exp(R)·e^{iP}
+    for (let i = 0; i < N; i++) {
+      const r = logAmp[i] - Q[i];
+      const expR = Math.exp(r);
+      real[i] = expR * Math.cos(phase[i]);
+      imag[i] = expR * Math.sin(phase[i]);
+    }
+
+    // Шаг 6: обратное 2D FFT
+    fft2d(real, imag, SR_SIZE, SR_SIZE, true);
+
+    // Шаг 7: карта = квадрат модуля
+    const sal = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      sal[i] = real[i] * real[i] + imag[i] * imag[i];
+    }
+
+    // Шаг 8: финальное гауссово размытие
+    const blurred = gaussBlur1D(sal, SR_SIZE, SR_SIZE, SR_LOG_SIGMA);
+
+    // Шаг 9: апскейл до 256×256, чтобы метрики и render были согласованы
+    const upscaled = upscaleBilinear(blurred, SR_SIZE, SR_SIZE, FINAL_SIZE, FINAL_SIZE);
+
+    // Шаг 10: нормировка [0, 1]
+    return normalize(upscaled);
+  }
+
+  /* ============================================================
+     Вспомогательные процедуры
+     ============================================================ */
+
+  /** Box-усреднение при downsampling в произвольной кратности. */
+  function downsample(src, srcW, srcH, dstW, dstH) {
+    const out = new Float32Array(dstW * dstH);
+    const sx = srcW / dstW;
+    const sy = srcH / dstH;
+    for (let y = 0; y < dstH; y++) {
+      const y0 = Math.floor(y * sy);
+      const y1 = Math.max(y0 + 1, Math.floor((y + 1) * sy));
+      for (let x = 0; x < dstW; x++) {
+        const x0 = Math.floor(x * sx);
+        const x1 = Math.max(x0 + 1, Math.floor((x + 1) * sx));
+        let sum = 0, cnt = 0;
+        for (let yi = y0; yi < y1 && yi < srcH; yi++) {
+          for (let xi = x0; xi < x1 && xi < srcW; xi++) {
+            sum += src[yi * srcW + xi];
+            cnt++;
+          }
+        }
+        out[y * dstW + x] = cnt > 0 ? sum / cnt : 0;
+      }
+    }
+    return out;
+  }
+
+  /** Билинейная интерполяция при upscaling. */
+  function upscaleBilinear(src, srcW, srcH, dstW, dstH) {
+    const out = new Float32Array(dstW * dstH);
+    const sx = (srcW - 1) / (dstW - 1);
+    const sy = (srcH - 1) / (dstH - 1);
+    for (let y = 0; y < dstH; y++) {
+      const fy = y * sy;
+      const y0 = Math.floor(fy);
+      const y1 = y0 + 1 < srcH ? y0 + 1 : y0;
+      const dy = fy - y0;
+      for (let x = 0; x < dstW; x++) {
+        const fx = x * sx;
+        const x0 = Math.floor(fx);
+        const x1 = x0 + 1 < srcW ? x0 + 1 : x0;
+        const dx = fx - x0;
+        const v00 = src[y0 * srcW + x0];
+        const v01 = src[y0 * srcW + x1];
+        const v10 = src[y1 * srcW + x0];
+        const v11 = src[y1 * srcW + x1];
+        const v0 = v00 * (1 - dx) + v01 * dx;
+        const v1 = v10 * (1 - dx) + v11 * dx;
+        out[y * dstW + x] = v0 * (1 - dy) + v1 * dy;
+      }
+    }
+    return out;
+  }
+
+  /** Простой box-фильтр k×k с граничным условием clamp-to-edge. */
+  function boxFilter(src, w, h, k) {
+    const half = (k - 1) >> 1;
+    const out = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let sum = 0, cnt = 0;
+        for (let dy = -half; dy <= half; dy++) {
+          let yi = y + dy;
+          if (yi < 0) yi = 0;
+          else if (yi >= h) yi = h - 1;
+          for (let dx = -half; dx <= half; dx++) {
+            let xi = x + dx;
+            if (xi < 0) xi = 0;
+            else if (xi >= w) xi = w - 1;
+            sum += src[yi * w + xi];
+            cnt++;
+          }
+        }
+        out[y * w + x] = sum / cnt;
+      }
+    }
+    return out;
+  }
+  // expose
+  window.spectralResidualSaliency = spectralResidualSaliency;
+})();
+
+/* ============= js/algorithms/index.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     algorithms/index.js — диспетчер методов салиентности
+     ============================================================ */
+
+
+  const METHODS = {
+    ft:    ftSaliency,
+    dog:   dogSaliency,
+    local: localContrastSaliency,
+    sr:    spectralResidualSaliency,
+  };
+
+  function computeSaliency(imageData, method) {
+    const fn = METHODS[method];
+    if (!fn) throw new Error(`Неизвестный метод: ${method}`);
+    return fn(imageData);
+  }
+
+  const METHOD_LABELS = {
+    ft:    'FT — Frequency-Tuned',
+    dog:   'DoG — Difference-of-Gaussians',
+    local: 'Local Contrast',
+    sr:    'SR — Spectral Residual',
+  };
+  // expose
+  window.computeSaliency = computeSaliency;
+  window.METHOD_LABELS = METHOD_LABELS;
+})();
+
+/* ============= js/colormap.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     colormap.js — цветовые карты Jet / Hot / Gray
+     Каждая функция: s ∈ [0, 1] → [R, G, B] в [0, 255].
+     ============================================================ */
+
+  const clamp255 = (v) => v < 0 ? 0 : v > 255 ? 255 : v;
+
+  function jet(s) {
+    const r = clamp255(255 * (1.5 - Math.abs(4 * s - 3)));
+    const g = clamp255(255 * (1.5 - Math.abs(4 * s - 2)));
+    const b = clamp255(255 * (1.5 - Math.abs(4 * s - 1)));
+    return [r | 0, g | 0, b | 0];
+  }
+
+  function hot(s) {
+    const r = clamp255(s * 3 * 255);
+    const g = clamp255((s * 3 - 1) * 255);
+    const b = clamp255((s * 3 - 2) * 255);
+    return [r | 0, g | 0, b | 0];
+  }
+
+  function gray(s) {
+    const v = clamp255(s * 255) | 0;
+    return [v, v, v];
+  }
+
+  const REGISTRY = { jet, hot, gray };
+
+  function getColormap(name) {
+    return REGISTRY[name] || jet;
+  }
+
+  /** Сгенерировать data URL легенды (горизонтальный градиент) для UI. */
+  function colormapLegendDataURL(name, width = 200, height = 12) {
+    const cmap = getColormap(name);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(width, height);
+    for (let x = 0; x < width; x++) {
+      const s = x / (width - 1);
+      const [r, g, b] = cmap(s);
+      for (let y = 0; y < height; y++) {
+        const idx = (y * width + x) * 4;
+        img.data[idx]     = r;
+        img.data[idx + 1] = g;
+        img.data[idx + 2] = b;
+        img.data[idx + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return canvas.toDataURL();
+  }
+  // expose
+  window.jet = jet;
+  window.hot = hot;
+  window.gray = gray;
+  window.getColormap = getColormap;
+  window.colormapLegendDataURL = colormapLegendDataURL;
+})();
+
+/* ============= js/metrics.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     metrics.js — 7 скалярных метрик карты салиентности
+     ============================================================ */
+
+  const round = (v, d) => {
+    const p = 10 ** d;
+    return Math.round(v * p) / p;
+  };
+
+  /** 4 значащие цифры — лучше работает для значений с большим разбросом порядка. */
+  const sigfig = (v, n = 4) => {
+    if (v === 0 || !isFinite(v)) return v;
+    return Number(v.toPrecision(n));
+  };
+
+  /**
+   * Универсальный форматтер метрик для UI (метрические карточки, эксплейнер, CSV).
+   * Учитывает единицы (проценты), большой разброс шкалы (peak), nullable.
+   */
+  function formatMetric(key, value) {
+    if (value == null) return '—';
+    if (typeof value === 'number' && !isFinite(value)) return '—';
+    if (key === 'spread_pct' || key === 'peak_x' || key === 'peak_y') {
+      return `${value}%`;
+    }
+    if (key === 'peak') {
+      const abs = Math.abs(value);
+      if (abs === 0) return '0';
+      if (abs >= 100000 || abs < 0.001) return value.toExponential(2);
+      return String(value);
+    }
+    return String(value);
+  }
+
+  /**
+   * Вычисляет mean, peak, entropy, center_bias, spread_pct, peak_x, peak_y
+   * для карты sal (Float32Array, длина width*height, значения в [0, 1]).
+   *
+   * Замечание про peak. Спека пишет «peak = max(S)», но S после
+   * нормализации всегда даёт max = 1.0 — метрика была бы константой.
+   * Поэтому реально информативная пиковая салиентность — это
+   * максимум сырой карты ДО нормализации (нормализатор сохраняет
+   * это значение в свойстве sal.rawMax). Координаты пика (peak_x/y)
+   * берём из нормированной карты — это та же позиция, что и у raw.
+   */
+  function computeMetrics(sal, width, height) {
+    const N = sal.length;
+
+    let sum = 0;
+    let peakNormalized = -Infinity;
+    let peakIdx = 0;
+    let spreadCount = 0;
+
+    for (let i = 0; i < N; i++) {
+      const v = sal[i];
+      sum += v;
+      if (v > peakNormalized) { peakNormalized = v; peakIdx = i; }
+      if (v > 0.5) spreadCount++;
+    }
+
+    // Реальный пик — из сырых данных, сохранённых нормализатором
+    const peak = sal.rawMax !== undefined ? sal.rawMax : peakNormalized;
+
+    const mean = sum / N;
+    const peakX = (peakIdx % width) / width  * 100;
+    const peakY = Math.floor(peakIdx / width) / height * 100;
+    const spreadPct = (spreadCount / N) * 100;
+
+    // Энтропия по гистограмме из 64 бинов
+    const bins = 64;
+    const hist = new Int32Array(bins);
+    for (let i = 0; i < N; i++) {
+      let b = (sal[i] * bins) | 0;
+      if (b >= bins) b = bins - 1;
+      else if (b < 0) b = 0;
+      hist[b]++;
+    }
+    let entropy = 0;
+    for (let i = 0; i < bins; i++) {
+      if (hist[i] > 0) {
+        const p = hist[i] / N;
+        entropy -= p * Math.log2(p);
+      }
+    }
+
+    // Center bias: μ_inner / μ_outer, inner radius = 0.7 * min(cx, cy)
+    const cx = width / 2;
+    const cy = height / 2;
+    const innerR = 0.7 * Math.min(cx, cy);
+    const innerR2 = innerR * innerR;
+    let innerSum = 0, innerCnt = 0, outerSum = 0, outerCnt = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const dx = x - cx;
+        const dy = y - cy;
+        const v = sal[y * width + x];
+        if (dx * dx + dy * dy <= innerR2) {
+          innerSum += v;
+          innerCnt++;
+        } else {
+          outerSum += v;
+          outerCnt++;
+        }
+      }
+    }
+    const innerMean = innerCnt > 0 ? innerSum / innerCnt : 0;
+    const outerMean = outerCnt > 0 ? outerSum / outerCnt : 0;
+    const centerBias = outerMean > 0 ? innerMean / outerMean : 0;
+
+    return {
+      mean:        round(mean, 4),
+      peak:        sigfig(peak, 4),  // 4 значащие цифры — peak имеет большой разброс шкалы
+      entropy:     round(entropy, 2),
+      center_bias: round(centerBias, 2),
+      spread_pct:  round(spreadPct, 2),
+      peak_x:      round(peakX, 2),
+      peak_y:      round(peakY, 2),
+    };
+  }
+
+  /**
+   * Описания метрик: краткое + развёрнутое (для эксплейнера).
+   * Поля:
+   *   label   — короткое имя для карточки
+   *   desc    — однострочное описание (тултип)
+   *   formula — формула в Markdown-стиле
+   *   what    — что это значит на простом языке
+   *   read    — как читать значения (диапазоны)
+   *   useFor  — как использовать в исследовании
+   */
+  const METRIC_LABELS = {
+    mean: {
+      label:   'Средняя',
+      desc:    'Среднее значение по карте салиентности',
+      formula: 'Σ S(i) / N',
+      what:    'Средний уровень салиентности по всему изображению. Чем выше — тем больше областей одновременно конкурируют за внимание.',
+      read:    [
+        ['< 0.15',    'спокойное, однородное изображение'],
+        ['0.15–0.35', 'типичная фотография'],
+        ['> 0.35',    'много визуально активных областей, фоновый шум'],
+      ],
+      useFor:  'При подборе серии стимулов проверяйте, чтобы средняя салиентность была сопоставимой между условиями. Иначе одни стимулы окажутся в среднем «громче» других, и это попадёт в зависимую переменную как побочный фактор. Если разброс большой, уравновесьте набор через Режим 3 — подбор сбалансированных групп.',
+    },
+
+    peak: {
+      label:   'Пиковая',
+      desc:    'Максимум сырой карты — сила самого яркого «магнита»',
+      formula: 'max(S) — до нормировки в [0, 1]',
+      what:    'Абсолютная сила самого выраженного «магнита» внимания в шкале выбранного метода. Чем выше — тем сильнее самая заметная точка выделяется относительно остального изображения. Если бы мы брали максимум уже нормированной карты, он по построению всегда равнялся бы 1.0 — поэтому метрика берёт максимум до нормировки.',
+      read:    [
+        ['метод-зависимо',     'значение в шкале выбранного метода: FT, DoG и Local Contrast дают разные единицы'],
+        ['растёт с контрастом', 'у изображения с резко выделенной «горячей» точкой peak больше'],
+        ['сравнивайте в серии', 'peak осмыслен только при одном и том же методе оценки'],
+      ],
+      useFor:  'Используйте для контроля серии стимулов: при одном выбранном методе peak должен быть сопоставим между стимулами одной экспериментальной парадигмы. Большой разброс означает, что в одних стимулах целевой объект сильнее «бросается в глаза», чем в других. Координаты пика — peak_x и peak_y.',
+    },
+
+    entropy: {
+      label:   'Энтропия',
+      desc:    'Неравномерность распределения (Шеннон, биты, 64 бина)',
+      formula: '−Σ p · log₂(p)',
+      what:    'Насколько разнообразны значения салиентности на карте. Высокая энтропия — много разных уровней заметности; низкая — карта почти плоская и одного уровня.',
+      read:    [
+        ['< 2', 'карта почти однородная — метод «не увидел» структуры'],
+        ['2–4', 'нормальное разнообразие, рабочий диапазон'],
+        ['> 4', 'очень неоднородная карта, много мелких очагов'],
+      ],
+      useFor:  'Если энтропия неожиданно низкая, попробуйте другой метод — возможно, он не подходит для вашего класса изображений. FT может сглаживать текстурные сцены — на них лучше работает DoG.',
+    },
+
+    center_bias: {
+      label:   'Центр / периферия',
+      desc:    'Отношение средней салиентности в центре к периферии',
+      formula: 'μ_inner / μ_outer, радиус = 0.7 · min(cx, cy)',
+      what:    'Насколько внимание сконцентрировано в центральной зоне относительно периферии. Известно, что при свободном просмотре участники по умолчанию смотрят ближе к центру кадра — этот «центральный сдвиг» нужно учитывать.',
+      read:    [
+        ['≈ 1.0', 'салиентность распределена равномерно по кадру'],
+        ['> 1.5', 'выраженный центральный объект, заметный центральный сдвиг'],
+        ['< 0.7', 'периферия активнее центра — нетипично, проверьте композицию'],
+      ],
+      useFor:  'Стимулы одной серии должны иметь сопоставимый center_bias. Если в одном условии все объекты в центре, а в другом — на краях, разница окуломоторных ответов будет объясняться композицией, а не вашей экспериментальной манипуляцией.',
+    },
+
+    spread_pct: {
+      label:   'Распространённость',
+      desc:    'Доля пикселей с салиентностью > 0.5 (%)',
+      formula: 'count(S > 0.5) / N × 100',
+      what:    'Какая часть изображения «активна» — насколько широко рассыпан фокус внимания. Низкое значение — точечный фокус, высокое — внимание размазано по кадру.',
+      read:    [
+        ['< 10 %',  'точечный фокус, один–два очага'],
+        ['10–30 %', 'фокус с контекстом'],
+        ['> 30 %',  'внимание рассеяно по большей части кадра'],
+      ],
+      useFor:  'Для контролируемых экспериментов часто предпочтительнее низкий spread — взгляд участника фиксирован на нужной зоне. Высокий spread может означать, что фон конкурирует с целевым стимулом и отвлекает.',
+    },
+
+    peak_x: {
+      label:   'Пик · X',
+      desc:    'Горизонтальная позиция максимума (% от ширины)',
+      formula: 'argmax_x(S) / width × 100',
+      what:    'Где по горизонтали находится самая заметная точка. 0 % — левый край, 50 % — центр, 100 % — правый край.',
+      read:    [
+        ['≈ 50 %',           'фокус по центру горизонтали'],
+        ['25–75 %',          'умеренный сдвиг от центра'],
+        ['< 25 % или > 75 %', 'эксцентричный фокус, ближе к краю кадра'],
+      ],
+      useFor:  'Для серии стимулов с похожими целевыми объектами следите, чтобы peak_x не «прыгал». Если в одном стимуле фокус слева, а в другом — справа, участник вынужден переориентировать взгляд между пробами, и это даёт лишний разброс времени реакции.',
+    },
+
+    peak_y: {
+      label:   'Пик · Y',
+      desc:    'Вертикальная позиция максимума (% от высоты)',
+      formula: 'argmax_y(S) / height × 100',
+      what:    'Где по вертикали находится самая заметная точка. 0 % — верх, 50 % — центр, 100 % — низ.',
+      read:    [
+        ['≈ 50 %',           'фокус по центру вертикали'],
+        ['25–75 %',          'умеренный сдвиг от центра'],
+        ['< 25 % или > 75 %', 'эксцентричный фокус, ближе к верху или низу кадра'],
+      ],
+      useFor:  'То же, что и для peak_x. В парадигмах с предъявлением фиксационной точки и затем стимула удобно держать peak_x и peak_y близко к 50 %, чтобы первое движение глаз после предъявления было предсказуемым.',
+    },
+  };
+
+  /**
+   * Описания методов оценки салиентности для UI-эксплейнера.
+   */
+  const METHOD_DESC = {
+    ft: {
+      title:  'FT — Frequency-Tuned Saliency',
+      source: 'Achanta et al., 2009',
+      what:    'Сравнивает каждый пиксель со средним цветом всего изображения в перцептивном пространстве CIE Lab после слабого размытия. По сути — «отклонение от типичного цвета сцены».',
+      when:    'Лучше всего работает на цветных натуральных сценах: фотографии, лица, объекты на фоне. Чувствителен к цветовым контрастам.',
+      pitfall: 'На монохромных или насыщенных текстурой изображениях даёт плоскую карту — на них лучше выбрать DoG.',
+    },
+    dog: {
+      title:  'DoG — Difference of Gaussians',
+      source: 'многомасштабный контраст яркости',
+      what:    'Считает разности гауссовых размытий на четырёх масштабах: (1, 2), (2, 4), (4, 8), (8, 16). Реагирует на яркостные перепады разной частоты. Цвет не использует.',
+      when:    'Универсальный метод для любых изображений: текстуры, линии, чёрно-белые фотографии, графика. Хорошо выделяет границы объектов.',
+      pitfall: 'Не различает цветовые контрасты: два пятна разного цвета, но одинаковой яркости, для DoG неотличимы.',
+    },
+    local: {
+      title:  'Local Color Contrast',
+      source: 'быстрый скрининговый метод',
+      what:    'Сравнивает каждый пиксель с локальным средним по большой окрестности (σ ≈ 8 % от размера изображения).',
+      when:    'Самый быстрый из четырёх. Подходит для первичной сортировки больших наборов — быстро отбраковать заведомо неудачные.',
+      pitfall: 'Менее точный, чем FT и DoG. Для финального анализа лучше выбрать FT.',
+    },
+    sr: {
+      title:  'SR — Spectral Residual',
+      source: 'Hou & Zhang, 2007',
+      what:    'Анализирует амплитудный спектр Фурье изображения. То, что отличается от среднего «гладкого» лог-спектра, и есть спектральный остаток. Он декодируется обратно в карту салиентности с фазой исходного сигнала. Метод подсвечивает редкие, нетипичные для сцены паттерны.',
+      when:    'Когда нужно найти необычные элементы в сложной сцене. Хорошо работает на изображениях с богатым фоном; устойчив к глобальной яркости и контрасту. Иногда выделяет другие зоны, чем FT и DoG, — полезно сравнить методы между собой.',
+      pitfall: 'Чувствителен к артефактам сжатия: на сильно зашумлённых JPEG может выделять блочные границы. Работает на 64×64 — мелкие детали теряются. Не использует цвет.',
+    },
+  };
+
+  /** Корреляция Пирсона между двумя картами одинаковой длины. */
+  function pearsonR(A, B) {
+    const N = A.length;
+    if (B.length !== N) throw new Error('Длины массивов не совпадают');
+
+    let sumA = 0, sumB = 0;
+    for (let i = 0; i < N; i++) {
+      sumA += A[i];
+      sumB += B[i];
+    }
+    const muA = sumA / N;
+    const muB = sumB / N;
+
+    let num = 0, denA = 0, denB = 0;
+    for (let i = 0; i < N; i++) {
+      const da = A[i] - muA;
+      const db = B[i] - muB;
+      num  += da * db;
+      denA += da * da;
+      denB += db * db;
+    }
+    const den = Math.sqrt(denA * denB);
+    return den === 0 ? 0 : num / den;
+  }
+  // expose
+  window.computeMetrics = computeMetrics;
+  window.METRIC_LABELS = METRIC_LABELS;
+  window.METHOD_DESC = METHOD_DESC;
+  window.pearsonR = pearsonR;
+  window.formatMetric = formatMetric;
+})();
+
+/* ============= js/render.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     render.js — рендеринг тепловых карт на canvas
+     ============================================================ */
+
+
+  /**
+   * Рисует карту салиентности sal (Float32Array, размер srcW*srcH, в [0,1])
+   * на canvas размером dstW*dstH с цветовой картой и прозрачностью.
+   * Если размеры совпадают — рендер напрямую; иначе — через промежуточный
+   * canvas + drawImage с билинейной интерполяцией.
+   *
+   * @param {Float32Array} sal
+   * @param {number} srcW
+   * @param {number} srcH
+   * @param {number} dstW
+   * @param {number} dstH
+   * @param {string} colormap
+   * @param {number} alpha     — 0..1
+   * @returns {HTMLCanvasElement}
+   */
+  function renderHeatmap(sal, srcW, srcH, dstW, dstH, colormap, alpha) {
+    const cmap = getColormap(colormap);
+
+    // Сначала всегда рендерим в нативном разрешении карты
+    const small = document.createElement('canvas');
+    small.width = srcW;
+    small.height = srcH;
+    const sctx = small.getContext('2d');
+    const img = sctx.createImageData(srcW, srcH);
+    const data = img.data;
+
+    for (let i = 0; i < sal.length; i++) {
+      const s = sal[i];
+      const [r, g, b] = cmap(s);
+      const a = Math.round(s * alpha * 255);
+      const idx = i * 4;
+      data[idx]     = r;
+      data[idx + 1] = g;
+      data[idx + 2] = b;
+      data[idx + 3] = a;
+    }
+    sctx.putImageData(img, 0, 0);
+
+    if (dstW === srcW && dstH === srcH) return small;
+
+    // Апскейл с билинейной интерполяцией
+    const out = document.createElement('canvas');
+    out.width = dstW;
+    out.height = dstH;
+    const octx = out.getContext('2d');
+    octx.imageSmoothingEnabled = true;
+    octx.imageSmoothingQuality = 'high';
+    octx.drawImage(small, 0, 0, dstW, dstH);
+    return out;
+  }
+
+  /**
+   * Рисует оверлей: оригинал + тепловая карта поверх.
+   * srcImg — HTMLImageElement | HTMLCanvasElement (исходник).
+   */
+  function renderOverlay(srcImg, sal, srcW, srcH, dstW, dstH, colormap, alpha) {
+    const canvas = document.createElement('canvas');
+    canvas.width = dstW;
+    canvas.height = dstH;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(srcImg, 0, 0, dstW, dstH);
+    const heat = renderHeatmap(sal, srcW, srcH, dstW, dstH, colormap, alpha);
+    ctx.drawImage(heat, 0, 0);
+    return canvas;
+  }
+
+  /** Промис для canvas.toBlob — для удобства в async-коде. */
+  function canvasToBlob(canvas, type = 'image/png', quality) {
+    return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+  }
+  // expose
+  window.renderHeatmap = renderHeatmap;
+  window.renderOverlay = renderOverlay;
+  window.canvasToBlob = canvasToBlob;
+})();
+
+/* ============= js/loader.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     loader.js — загрузка изображений
+     File → ImageData 256×256 (фиксированный размер для скорости)
+     + сохранение оригинала для рендера в исходном разрешении.
+     ============================================================ */
+
+  const TARGET_SIZE = 256;
+
+  const ALLOWED = /\.(jpe?g|png|webp|bmp)$/i;
+
+  /**
+   * Загружает один File → объект с ImageData 256×256, превью-data-URL,
+   * оригинальным разрешением и оригинальным <img>.
+   */
+  function loadImageFile(file) {
+    return new Promise((resolve, reject) => {
+      if (!ALLOWED.test(file.name)) {
+        reject(new Error(`Неподдерживаемый формат: ${file.name}`));
+        return;
+      }
+
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+
+      img.onload = () => {
+        try {
+          const origW = img.naturalWidth;
+          const origH = img.naturalHeight;
+
+          const canvas = document.createElement('canvas');
+          canvas.width = TARGET_SIZE;
+          canvas.height = TARGET_SIZE;
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, TARGET_SIZE, TARGET_SIZE);
+
+          const imageData = ctx.getImageData(0, 0, TARGET_SIZE, TARGET_SIZE);
+          const thumb = canvas.toDataURL('image/jpeg', 0.85);
+
+          resolve({
+            imageData,
+            thumb,
+            origW,
+            origH,
+            origImage: img,
+            name: file.name,
+            file,
+          });
+        } catch (err) {
+          URL.revokeObjectURL(url);
+          reject(err);
+        }
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error(`Не удалось загрузить ${file.name}`));
+      };
+
+      img.src = url;
+    });
+  }
+
+  /**
+   * Параллельная загрузка нескольких файлов. Возвращает {ok: [...], errors: [...]}.
+   */
+  async function loadImageFiles(files) {
+    const results = await Promise.allSettled([...files].map(loadImageFile));
+    const ok = [];
+    const errors = [];
+    for (const r of results) {
+      if (r.status === 'fulfilled') ok.push(r.value);
+      else errors.push(r.reason);
+    }
+    return { ok, errors };
+  }
+
+  /**
+   * Извлечь ImageData 256×256 из произвольной области HTMLImageElement
+   * (для режима составного стимула).
+   */
+  function cropToImageData(srcImage, sx, sy, sw, sh) {
+    const canvas = document.createElement('canvas');
+    canvas.width = TARGET_SIZE;
+    canvas.height = TARGET_SIZE;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(srcImage, sx, sy, sw, sh, 0, 0, TARGET_SIZE, TARGET_SIZE);
+    return {
+      imageData: ctx.getImageData(0, 0, TARGET_SIZE, TARGET_SIZE),
+      thumb: canvas.toDataURL('image/jpeg', 0.85),
+    };
+  }
+  // expose
+  window.loadImageFile = loadImageFile;
+  window.loadImageFiles = loadImageFiles;
+  window.cropToImageData = cropToImageData;
+  window.TARGET_SIZE = TARGET_SIZE;
+})();
+
+/* ============= js/export.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     export.js — CSV / PNG / ZIP экспорт
+     ============================================================ */
+
+
+  const BOM = '﻿';
+
+  /* ----------------------- CSV ----------------------- */
+
+  function escapeCell(v) {
+    if (v == null) return '""';
+    const s = String(v);
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+
+  /**
+   * Сериализует rows (массив массивов) в CSV-строку с UTF-8 BOM.
+   * Числа форматируются с десятичной точкой, разделитель — запятая.
+   */
+  function toCSV(rows) {
+    const lines = rows.map((row) => row.map(escapeCell).join(','));
+    return BOM + lines.join('\r\n');
+  }
+
+  /** Триггерит скачивание текстового CSV под именем filename. */
+  function downloadCSV(rows, filename) {
+    const csv = toCSV(rows);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    downloadBlob(blob, filename);
+  }
+
+  /* ----------------------- Blob download ----------------------- */
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 0);
+  }
+
+  /* ----------------------- PNG ----------------------- */
+
+  async function downloadCanvasPNG(canvas, filename) {
+    const blob = await canvasToBlob(canvas, 'image/png');
+    if (blob) downloadBlob(blob, filename);
+  }
+
+  /* ----------------------- ZIP (через JSZip) ----------------------- */
+
+  /** Возвращает true, если JSZip доступен (через CDN, см. index.html). */
+  function jsZipAvailable() {
+    return typeof window !== 'undefined' && typeof window.JSZip === 'function';
+  }
+
+  /**
+   * Собирает ZIP-архив из массива {name, blob} и скачивает его.
+   * Если JSZip недоступен — последовательно скачивает файлы по одному.
+   */
+  async function downloadZip(entries, zipName) {
+    if (jsZipAvailable()) {
+      const zip = new window.JSZip();
+      for (const e of entries) {
+        zip.file(e.name, e.blob);
+      }
+      const blob = await zip.generateAsync({ type: 'blob' });
+      downloadBlob(blob, zipName);
+      return;
+    }
+
+    // Fallback: по одному, с небольшой задержкой между файлами
+    for (let i = 0; i < entries.length; i++) {
+      const { name, blob } = entries[i];
+      downloadBlob(blob, name);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  /** Безопасное имя файла без расширения. */
+  function stripExt(filename) {
+    return filename.replace(/\.[^.]+$/, '');
+  }
+  // expose
+  window.toCSV = toCSV;
+  window.downloadCSV = downloadCSV;
+  window.downloadBlob = downloadBlob;
+  window.downloadCanvasPNG = downloadCanvasPNG;
+  window.jsZipAvailable = jsZipAvailable;
+  window.downloadZip = downloadZip;
+  window.stripExt = stripExt;
+})();
+
+/* ============= js/toast.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     toast.js — лёгкая система уведомлений (правый нижний угол)
+     ============================================================ */
+
+  let container = null;
+
+  function ensureContainer() {
+    if (container) return container;
+    container = document.createElement('div');
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+    return container;
+  }
+
+  function toast(message, type = 'info', duration = 3500) {
+    const c = ensureContainer();
+    const el = document.createElement('div');
+    el.className = `toast toast-${type}`;
+    el.innerHTML = `
+      <span class="toast-mark"></span>
+      <span class="toast-msg">${escapeHtml(message)}</span>
+      <button class="toast-close" aria-label="Закрыть">×</button>
+    `;
+    c.appendChild(el);
+
+    const close = () => {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 220);
+    };
+    el.querySelector('.toast-close').addEventListener('click', close);
+
+    requestAnimationFrame(() => el.classList.add('show'));
+    if (duration > 0) {
+      setTimeout(close, duration);
+    }
+  }
+
+  const toastError   = (m, d) => toast(m, 'error',   d ?? 5000);
+  const toastSuccess = (m, d) => toast(m, 'success', d ?? 2500);
+  const toastInfo    = (m, d) => toast(m, 'info',    d ?? 3000);
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+  // expose
+  window.toast = toast;
+  window.toastError = toastError;
+  window.toastSuccess = toastSuccess;
+  window.toastInfo = toastInfo;
+})();
+
+/* ============= js/eyetracking/csv-parser.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     csv-parser.js — универсальный парсер CSV/TSV
+     Авто-определяет разделитель (`;` или `,` или `\t`).
+     Предлагает соответствие колонок по нечёткому совпадению.
+     ============================================================ */
+
+  /**
+   * Парсит CSV-текст. Возвращает {columns, rows, separator}.
+   * rows — массив объектов {colName: value}.
+   */
+  function parseCSV(text) {
+    // BOM
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+
+    const lines = text.split(/\r?\n/);
+    if (!lines.length) return { columns: [], rows: [], separator: ',' };
+
+    // Определяем разделитель по первой строке
+    const first = lines[0] || '';
+    const counts = {
+      ';': (first.match(/;/g) || []).length,
+      ',': (first.match(/,/g) || []).length,
+      '\t': (first.match(/\t/g) || []).length,
+    };
+    let sep = ',';
+    let max = -1;
+    for (const k of Object.keys(counts)) {
+      if (counts[k] > max) { max = counts[k]; sep = k; }
+    }
+
+    const columns = parseLine(lines[0], sep);
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      const ln = lines[i];
+      if (!ln || !ln.trim()) continue;
+      const values = parseLine(ln, sep);
+      const obj = {};
+      for (let j = 0; j < columns.length; j++) {
+        obj[columns[j]] = values[j] != null ? values[j] : '';
+      }
+      rows.push(obj);
+    }
+    return { columns, rows, separator: sep };
+  }
+
+  /** Парсинг одной строки CSV с учётом кавычек. */
+  function parseLine(line, sep) {
+    const out = [];
+    let cur = '';
+    let inQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQuote = !inQuote;
+      } else if (ch === sep && !inQuote) {
+        out.push(cur);
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur);
+    return out;
+  }
+
+  /**
+   * Эвристическое сопоставление колонок CSV с ожидаемыми ролями.
+   * Возвращает {x, y, type, duration, participant, stimulus}
+   * где значения — реальные имена колонок из CSV (или null).
+   */
+  function detectColumns(columns) {
+    const lower = columns.map((c) => (c || '').toLowerCase().trim());
+
+    const find = (...patterns) => {
+      // exact match first
+      for (const p of patterns) {
+        const i = lower.indexOf(p);
+        if (i !== -1) return columns[i];
+      }
+      // includes match
+      for (const p of patterns) {
+        const i = lower.findIndex((c) => c.includes(p));
+        if (i !== -1) return columns[i];
+      }
+      return null;
+    };
+
+    return {
+      x:           find('x_px', 'x_pixel', 'gaze_x', 'fix_x', 'x'),
+      y:           find('y_px', 'y_pixel', 'gaze_y', 'fix_y', 'y'),
+      type:        find('type', 'event', 'event_type', 'category'),
+      duration:    find('dur_sec', 'duration', 'fix_dur', 'dur', 'fixation_duration'),
+      participant: find('result_name', 'participant', 'subject', 'user', 'observer', 'id'),
+      stimulus:    find('stimulus', 'image', 'filename', 'media', 'stim'),
+    };
+  }
+
+  /**
+   * Извлечь фиксации с числовыми координатами и опциональной длительностью.
+   * Если в CSV есть колонка `type` — фильтруем по 'fixation' / 'fix'.
+   * Если опция stimulus задана — фильтруем по точному совпадению имени.
+   */
+  function extractFixations(rows, mapping, opts = {}) {
+    const { stimulus = null } = opts;
+    const out = [];
+
+    for (const row of rows) {
+      if (mapping.type) {
+        const t = String(row[mapping.type] || '').toLowerCase().trim();
+        if (t && t !== 'fixation' && t !== 'fix') continue;
+      }
+      if (stimulus && mapping.stimulus) {
+        if (row[mapping.stimulus] !== stimulus) continue;
+      }
+
+      const x = parseNum(row[mapping.x]);
+      const y = parseNum(row[mapping.y]);
+      if (!isFinite(x) || !isFinite(y)) continue;
+
+      let duration = 1;
+      if (mapping.duration) {
+        const d = parseNum(row[mapping.duration]);
+        if (isFinite(d) && d > 0) duration = d;
+      }
+
+      const participant = mapping.participant ? row[mapping.participant] : null;
+      out.push({ x, y, duration, participant });
+    }
+
+    return out;
+  }
+
+  /** Найти все уникальные имена стимулов в CSV. */
+  function uniqueStimuli(rows, mapping) {
+    if (!mapping.stimulus) return [];
+    const set = new Set();
+    for (const row of rows) {
+      const s = row[mapping.stimulus];
+      if (s) set.add(s);
+    }
+    return [...set];
+  }
+
+  function parseNum(v) {
+    if (v == null) return NaN;
+    return parseFloat(String(v).replace(',', '.'));
+  }
+  // expose
+  window.parseCSV = parseCSV;
+  window.detectColumns = detectColumns;
+  window.extractFixations = extractFixations;
+  window.uniqueStimuli = uniqueStimuli;
+})();
+
+/* ============= js/eyetracking/fixmap.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     fixmap.js — построение fixation map через KDE
+     и метрики соответствия с моделью салиентности.
+
+     Карта строится на сетке 256×256 (TARGET) — той же, на которой
+     считается и салиентность. Это обеспечивает прямую сравнимость.
+
+     σ в исходных пикселях кадра масштабируется в σ для сетки 256.
+     ============================================================ */
+
+
+  const TARGET = 256;
+
+  /**
+   * Анизотропная гауссова свёртка: разные σ по осям.
+   * Делает раздельные проходы — горизонтальный с σx, вертикальный с σy.
+   * Это нужно когда исходное изображение неквадратное и мы маппим
+   * пиксели в единый размер 256×256 — на сетке σ становится разным
+   * по X и Y, чтобы соответствовать ИЗОТРОПНОМУ ядру в исходном пространстве.
+   */
+  function gaussBlur2DAniso(src, w, h, sigmaX, sigmaY) {
+    // Горизонтальный проход с σx
+    const tmp = sigmaX > 0 ? gaussBlur1D_axis(src, w, h, sigmaX, true)  : new Float32Array(src);
+    // Вертикальный проход с σy
+    const out = sigmaY > 0 ? gaussBlur1D_axis(tmp, w, h, sigmaY, false) : tmp;
+    return out;
+  }
+
+  /**
+   * Однопроходное размытие по одной оси (true — по X, false — по Y).
+   * Реализация дублирует логику gaussBlur1D, но с управляемой осью.
+   */
+  function gaussBlur1D_axis(src, w, h, sigma, horizontal) {
+    if (sigma <= 0) return new Float32Array(src);
+    const k = Math.max(3, 2 * Math.ceil(3 * sigma) + 1);
+    const half = (k - 1) >> 1;
+    const kernel = new Float32Array(k);
+    const s2 = 2 * sigma * sigma;
+    let sum = 0;
+    for (let i = 0; i < k; i++) {
+      const x = i - half;
+      const v = Math.exp(-(x * x) / s2);
+      kernel[i] = v;
+      sum += v;
+    }
+    for (let i = 0; i < k; i++) kernel[i] /= sum;
+
+    const out = new Float32Array(w * h);
+    if (horizontal) {
+      for (let y = 0; y < h; y++) {
+        const row = y * w;
+        for (let x = 0; x < w; x++) {
+          let acc = 0;
+          for (let m = 0; m < k; m++) {
+            let xi = x + m - half;
+            if (xi < 0) xi = 0; else if (xi >= w) xi = w - 1;
+            acc += src[row + xi] * kernel[m];
+          }
+          out[row + x] = acc;
+        }
+      }
+    } else {
+      for (let y = 0; y < h; y++) {
+        const row = y * w;
+        for (let x = 0; x < w; x++) {
+          let acc = 0;
+          for (let m = 0; m < k; m++) {
+            let yi = y + m - half;
+            if (yi < 0) yi = 0; else if (yi >= h) yi = h - 1;
+            acc += src[yi * w + x] * kernel[m];
+          }
+          out[row + x] = acc;
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Построить fixation map по списку фиксаций.
+   *
+   * Алгоритм:
+   *   1. Создаём сетку 256×256.
+   *   2. Каждая фиксация — точка с весом = duration (или 1) в соответствующем пикселе сетки.
+   *   3. Размываем АНИЗОТРОПНЫМ гауссовым ядром: σx = σ_src · (TARGET/srcW), σy = σ_src · (TARGET/srcH).
+   *      Это эквивалентно изотропному размытию с σ_src в пикселях исходного кадра.
+   *   4. Нормируем в [0, 1].
+   *
+   * @param {Array<{x:number,y:number,duration:number}>} fixations
+   *        координаты в пикселях исходного кадра, x в [0, srcW), y в [0, srcH)
+   * @param {number} srcW — ширина исходного кадра (= ширина стимула в px на экране)
+   * @param {number} srcH — высота
+   * @param {number} sigmaSrc — σ ядра KDE в пикселях исходного кадра
+   *        (стандартно ≈ 1° угла зрения, что даёт ≈ 30 px при типичных условиях)
+   *
+   * @returns {Float32Array} TARGET·TARGET значений в [0, 1], нормированных,
+   *          с прикреплёнными свойствами rawMin/rawMax.
+   */
+  function buildFixationMap(fixations, srcW, srcH, sigmaSrc = 30) {
+    const map = new Float32Array(TARGET * TARGET);
+    if (srcW <= 0 || srcH <= 0) return normalize(map);
+
+    const sx = TARGET / srcW;
+    const sy = TARGET / srcH;
+
+    for (const f of fixations) {
+      const xi = Math.round(f.x * sx);
+      const yi = Math.round(f.y * sy);
+      if (xi < 0 || xi >= TARGET || yi < 0 || yi >= TARGET) continue;
+      map[yi * TARGET + xi] += f.duration > 0 ? f.duration : 1;
+    }
+
+    // Анизотропное σ: на сетке 256×256 ширина и высота имеют разный масштаб
+    // относительно исходного кадра, поэтому σ должно быть разным по осям —
+    // тогда размытие соответствует ИЗОТРОПНОМУ ядру в пиксельных координатах эксперимента.
+    const sigmaX = Math.max(0.5, sigmaSrc * sx);
+    const sigmaY = Math.max(0.5, sigmaSrc * sy);
+    const blurred = gaussBlur2DAniso(map, TARGET, TARGET, sigmaX, sigmaY);
+    return normalize(blurred);
+  }
+
+  /* ============================================================
+     Метрики соответствия моделей салиентности и фиксаций
+     ============================================================ */
+
+  /**
+   * Pearson r между двумя картами одинаковой длины.
+   * Линейная корреляция; диапазон [−1, +1].
+   */
+  function pearsonR(A, B) {
+    const N = A.length;
+    let sumA = 0, sumB = 0;
+    for (let i = 0; i < N; i++) { sumA += A[i]; sumB += B[i]; }
+    const muA = sumA / N, muB = sumB / N;
+    let num = 0, denA = 0, denB = 0;
+    for (let i = 0; i < N; i++) {
+      const da = A[i] - muA;
+      const db = B[i] - muB;
+      num  += da * db;
+      denA += da * da;
+      denB += db * db;
+    }
+    const den = Math.sqrt(denA * denB);
+    return den === 0 ? 0 : num / den;
+  }
+
+  /**
+   * NSS (Normalized Scanpath Saliency).
+   *
+   * 1) z-нормировать карту салиентности по всему изображению;
+   * 2) для каждой точки фиксации взять z-значение в её координате;
+   * 3) усреднить.
+   *
+   * NSS = 0  — модель не отличается от случайного предсказания.
+   * NSS > 0  — фиксации систематически попадают в зоны выше среднего.
+   * NSS > 1  — уверенное предсказание.
+   *
+   * @param {Array} fixations — координаты в пикселях исходного кадра
+   * @param {Float32Array} sal — карта салиентности TARGET×TARGET
+   * @param {number} srcW, srcH — размер исходного кадра
+   */
+  function computeNSS(fixations, sal, srcW, srcH) {
+    const N = sal.length;
+    // среднее и стандартное отклонение карты
+    let sum = 0;
+    for (let i = 0; i < N; i++) sum += sal[i];
+    const mean = sum / N;
+    let varSum = 0;
+    for (let i = 0; i < N; i++) {
+      const d = sal[i] - mean;
+      varSum += d * d;
+    }
+    const stdev = Math.sqrt(varSum / N);
+    if (stdev === 0) return 0;
+
+    const sx = TARGET / srcW;
+    const sy = TARGET / srcH;
+    let total = 0, count = 0;
+    for (const f of fixations) {
+      const xi = Math.round(f.x * sx);
+      const yi = Math.round(f.y * sy);
+      if (xi < 0 || xi >= TARGET || yi < 0 || yi >= TARGET) continue;
+      const z = (sal[yi * TARGET + xi] - mean) / stdev;
+      total += z;
+      count++;
+    }
+    return count > 0 ? total / count : 0;
+  }
+
+  /**
+   * AUC-Judd: salience рассматривается как бинарный классификатор фиксаций.
+   * Каждый порог t в карте даёт TPR (доля фиксаций попавших в зону выше t)
+   * и FPR (доля остальных пикселей выше t). Площадь под ROC-кривой и есть AUC.
+   *
+   * 0.5 — модель не лучше случайной.
+   * 0.7–0.8 — типичный диапазон классических моделей салиентности.
+   * 0.9+ — высокое соответствие (обычно требуется обучение под фиксации).
+   */
+  function computeAUCJudd(fixations, sal, srcW, srcH) {
+    const N = sal.length;
+
+    const isFix = new Uint8Array(N);
+    const sx = TARGET / srcW;
+    const sy = TARGET / srcH;
+    let nFix = 0;
+    for (const f of fixations) {
+      const xi = Math.round(f.x * sx);
+      const yi = Math.round(f.y * sy);
+      if (xi < 0 || xi >= TARGET || yi < 0 || yi >= TARGET) continue;
+      const idx = yi * TARGET + xi;
+      if (!isFix[idx]) { isFix[idx] = 1; nFix++; }
+    }
+    if (nFix === 0 || nFix === N) return 0.5;
+
+    // Сортируем индексы по убыванию saliency.
+    // Tie-break: при равных значениях сначала идут пиксели-фиксации.
+    // Без этого AUC систематически занижается на картах с плоскими участками
+    // (например, у Local Contrast — много нулевых значений).
+    const idxs = new Int32Array(N);
+    for (let i = 0; i < N; i++) idxs[i] = i;
+    // Int32Array.sort стабильна в современных движках, но сравнитель
+    // должен явно повышать isFix-пиксели при равенстве значений.
+    const arr = Array.from(idxs);
+    arr.sort((a, b) => (sal[b] - sal[a]) || (isFix[b] - isFix[a]));
+    for (let i = 0; i < N; i++) idxs[i] = arr[i];
+
+    const totalNeg = N - nFix;
+    let tp = 0, fp = 0;
+    let prevTPR = 0, prevFPR = 0;
+    let auc = 0;
+
+    for (let i = 0; i < N; i++) {
+      const k = idxs[i];
+      if (isFix[k]) tp++; else fp++;
+      const tpr = tp / nFix;
+      const fpr = fp / totalNeg;
+      // трапеция
+      auc += (fpr - prevFPR) * (tpr + prevTPR) * 0.5;
+      prevTPR = tpr;
+      prevFPR = fpr;
+    }
+    return auc;
+  }
+
+  /**
+   * Разностная карта (для визуализации) — где модель «промахивается».
+   * Возвращает Float32Array TARGET·TARGET со значениями в [-1, +1]:
+   * положительные — салиентность переоценена, отрицательные — недооценена.
+   */
+  function differenceMap(salience, fixmap) {
+    const N = salience.length;
+    const out = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      out[i] = salience[i] - fixmap[i];
+    }
+    return out;
+  }
+  // expose
+  window.buildFixationMap = buildFixationMap;
+  window.pearsonR = pearsonR;
+  window.computeNSS = computeNSS;
+  window.computeAUCJudd = computeAUCJudd;
+  window.differenceMap = differenceMap;
+  window.TARGET = TARGET;
+})();
+
+/* ============= js/fixations-app.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     fixations-app.js — модуль сравнения карт айтрекинга
+     и моделей салиентности.
+
+     Точка входа отдельной страницы fixations.html.
+     Использует общие алгоритмы салиентности из js/algorithms/.
+     ============================================================ */
+
+
+  /* ============================================================
+     Состояние
+     ============================================================ */
+
+  const state = {
+    stim: null,           // {imageData, origImage, origW, origH, name, ...}
+    csv: {
+      raw: null,
+      parsed: null,
+      mapping: null,
+      stimuli: [],
+      fileName: '',
+      coordsBounds: null,  // {minX, maxX, minY, maxY} по фиксациям
+    },
+    params: {
+      method: 'ft',
+      sigmaPx: 30,
+      selectedStimulus: '',
+      frameW: null,        // null → возьмём из размера изображения
+      frameH: null,
+    },
+    result: null,         // {sal, fixmap, diff, metrics}
+    busy: false,
+  };
+
+  const dom = {};
+
+  const METHOD_HINTS = {
+    ft:    'цветовая салиентность через CIE Lab',
+    dog:   'многомасштабный контраст яркости',
+    local: 'быстрый локальный контраст',
+    sr:    'спектральный остаток',
+  };
+
+  /* ============================================================
+     Инициализация
+     ============================================================ */
+
+  document.addEventListener('DOMContentLoaded', () => {
+    cacheDom();
+    bindEvents();
+    renderParams();
+    updateRunButton();
+  });
+
+  function cacheDom() {
+    dom.stimDz       = document.getElementById('stim-dropzone');
+    dom.stimFile     = document.getElementById('stim-file');
+    dom.stimPick     = document.getElementById('stim-pick');
+    dom.stimInfo     = document.getElementById('stim-info');
+
+    dom.csvDz        = document.getElementById('csv-dropzone');
+    dom.csvFile      = document.getElementById('csv-file');
+    dom.csvPick      = document.getElementById('csv-pick');
+    dom.csvInfo      = document.getElementById('csv-info');
+
+    dom.params       = document.getElementById('params');
+    dom.method       = document.getElementById('param-method');
+    dom.sigma        = document.getElementById('param-sigma');
+    dom.sigmaVal     = document.getElementById('param-sigma-val');
+    dom.stimFilter   = document.getElementById('param-stim-filter');
+    dom.frameW       = document.getElementById('frame-w');
+    dom.frameH       = document.getElementById('frame-h');
+    dom.frameReset   = document.getElementById('frame-reset');
+    dom.frameHint    = document.getElementById('frame-hint');
+    dom.runBtn       = document.getElementById('run-btn');
+
+    dom.results      = document.getElementById('results');
+    dom.busy         = document.getElementById('busy');
+    dom.metricsBox   = document.getElementById('eval-metrics');
+    dom.stageRow     = document.getElementById('stage-row');
+    dom.dlCsv        = document.getElementById('dl-csv');
+    dom.dlZip        = document.getElementById('dl-zip');
+  }
+
+  function bindEvents() {
+    // ---- стимул ----
+    dom.stimPick.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dom.stimFile.click();
+    });
+    dom.stimDz.addEventListener('click', () => dom.stimFile.click());
+    dom.stimFile.addEventListener('change', () => {
+      const f = dom.stimFile.files?.[0];
+      if (f) handleStimulus(f);
+    });
+    bindDrop(dom.stimDz, (files) => { if (files[0]) handleStimulus(files[0]); });
+
+    // ---- csv ----
+    dom.csvPick.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dom.csvFile.click();
+    });
+    dom.csvDz.addEventListener('click', () => dom.csvFile.click());
+    dom.csvFile.addEventListener('change', () => {
+      const f = dom.csvFile.files?.[0];
+      if (f) handleCsv(f);
+    });
+    bindDrop(dom.csvDz, (files) => { if (files[0]) handleCsv(files[0]); });
+
+    // ---- параметры ----
+    dom.method.addEventListener('change', () => {
+      state.params.method = dom.method.value;
+    });
+    dom.sigma.addEventListener('input', () => {
+      state.params.sigmaPx = +dom.sigma.value;
+      dom.sigmaVal.textContent = state.params.sigmaPx;
+    });
+    dom.stimFilter.addEventListener('change', () => {
+      state.params.selectedStimulus = dom.stimFilter.value;
+      renderCsvInfo();
+      updateFrameHint();
+    });
+
+    // ---- размер кадра ----
+    dom.frameW.addEventListener('input', () => {
+      const v = parseInt(dom.frameW.value, 10);
+      state.params.frameW = isFinite(v) && v > 0 ? v : null;
+      updateFrameHint();
+    });
+    dom.frameH.addEventListener('input', () => {
+      const v = parseInt(dom.frameH.value, 10);
+      state.params.frameH = isFinite(v) && v > 0 ? v : null;
+      updateFrameHint();
+    });
+    dom.frameReset.addEventListener('click', () => {
+      if (!state.stim) return;
+      state.params.frameW = state.stim.origW;
+      state.params.frameH = state.stim.origH;
+      dom.frameW.value = state.stim.origW;
+      dom.frameH.value = state.stim.origH;
+      updateFrameHint();
+    });
+
+    // ---- кнопки ----
+    dom.runBtn.addEventListener('click', runComparison);
+    dom.dlCsv.addEventListener('click', exportCsvReport);
+    dom.dlZip.addEventListener('click', exportZipMaps);
+  }
+
+  function bindDrop(zone, onFiles) {
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      zone.classList.add('drag-over');
+    });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      const files = [...(e.dataTransfer.files || [])];
+      if (files.length) onFiles(files);
+    });
+  }
+
+  /* ============================================================
+     Стимул
+     ============================================================ */
+
+  async function handleStimulus(file) {
+    try {
+      state.stim = await loadImageFile(file);
+      // По умолчанию — размер кадра = размеру изображения. Пользователь может переопределить.
+      if (state.params.frameW == null) state.params.frameW = state.stim.origW;
+      if (state.params.frameH == null) state.params.frameH = state.stim.origH;
+      if (dom.frameW) dom.frameW.value = state.params.frameW;
+      if (dom.frameH) dom.frameH.value = state.params.frameH;
+      renderStimInfo();
+      updateFrameHint();
+      updateRunButton();
+    } catch (err) {
+      toastError(err.message || String(err));
+    }
+  }
+
+  function renderStimInfo() {
+    if (!state.stim) {
+      dom.stimInfo.hidden = true;
+      return;
+    }
+    const { name, origW, origH } = state.stim;
+    dom.stimInfo.hidden = false;
+    dom.stimInfo.innerHTML = `
+      <span class="upload-tag">STIMULUS</span>
+      <span class="upload-name">${escapeHtml(name)}</span>
+      <span class="upload-meta">${origW} × ${origH} px</span>
+      <button class="upload-replace" data-act="replace-stim" type="button">↻ заменить</button>
+    `;
+    dom.stimInfo.querySelector('[data-act="replace-stim"]').addEventListener('click', () => {
+      state.stim = null;
+      state.result = null;
+      renderStimInfo();
+      hideResults();
+      updateRunButton();
+      dom.stimFile.value = '';
+    });
+  }
+
+  /* ============================================================
+     CSV
+     ============================================================ */
+
+  async function handleCsv(file) {
+    try {
+      if (file.size > 50 * 1024 * 1024) {
+        toastError(
+          `Файл ${file.name} слишком большой (${(file.size / 1024 / 1024).toFixed(1)} МБ). ` +
+          `Ожидается CSV с фиксациями — обычно меньше 10 МБ. Возможно, это не тот файл.`
+        );
+        return;
+      }
+      const text = await file.text();
+      if (!text.trim()) {
+        toastError('CSV-файл пустой.');
+        return;
+      }
+
+      const parsed = parseCSV(text);
+      if (!parsed.columns.length) {
+        toastError('Не удалось разобрать заголовок CSV. Проверьте, что в первой строке есть имена колонок.');
+        return;
+      }
+      if (!parsed.rows.length) {
+        toastError('В CSV есть только заголовок, но нет строк с данными.');
+        return;
+      }
+
+      const mapping = detectColumns(parsed.columns);
+
+      if (!mapping.x || !mapping.y) {
+        const sample = parsed.columns.slice(0, 12).join(', ');
+        toastError(
+          `В CSV не нашлись колонки координат (ожидаются x_px / y_px или x / y). ` +
+          `Найдены колонки: ${sample}${parsed.columns.length > 12 ? '…' : ''}. ` +
+          `Переименуйте нужные колонки в исходном файле и загрузите повторно.`,
+          9000
+        );
+        return;
+      }
+
+      state.csv.raw = text;
+      state.csv.parsed = parsed;
+      state.csv.mapping = mapping;
+      state.csv.stimuli = uniqueStimuli(parsed.rows, mapping);
+      state.csv.fileName = file.name;
+      state.params.selectedStimulus = state.csv.stimuli.length === 1
+        ? state.csv.stimuli[0]
+        : '';
+
+      // Если изображение ещё не загружено — авто-предложить размер кадра по координатам
+      if (!state.stim) {
+        const bounds = getCoordsBounds();
+        if (bounds) {
+          const guessW = roundUpToCommon(Math.ceil(bounds.maxX));
+          const guessH = roundUpToCommon(Math.ceil(bounds.maxY));
+          if (state.params.frameW == null) {
+            state.params.frameW = guessW;
+            if (dom.frameW) dom.frameW.value = guessW;
+          }
+          if (state.params.frameH == null) {
+            state.params.frameH = guessH;
+            if (dom.frameH) dom.frameH.value = guessH;
+          }
+        }
+      }
+
+      const fixCount = countFixations();
+      if (fixCount === 0) {
+        toastInfo(
+          `CSV распознан, но после фильтрации не осталось фиксаций. ` +
+          `Проверьте: тип события (type=fixation) и/или выбор стимула в параметрах.`,
+          7000
+        );
+      } else {
+        toastSuccess(`CSV распознан · ${fixCount} фиксаций`);
+      }
+
+      renderCsvInfo();
+      renderStimulusFilter();
+      updateFrameHint();
+      updateRunButton();
+    } catch (err) {
+      toastError(err.message || String(err));
+    }
+  }
+
+  /** Подсказать «обычный» размер монитора по верхней координате. */
+  function roundUpToCommon(v) {
+    const common = [800, 1024, 1280, 1366, 1440, 1600, 1680, 1920, 2048, 2560, 3840,
+                    600, 720, 768, 800, 900, 1050, 1080, 1200, 1440, 1600, 2160];
+    const sorted = common.filter((c) => c >= v).sort((a, b) => a - b);
+    if (sorted.length) return sorted[0];
+    return Math.ceil(v / 100) * 100;
+  }
+
+  function renderCsvInfo() {
+    const { parsed, mapping, fileName, stimuli } = state.csv;
+    if (!parsed) {
+      dom.csvInfo.hidden = true;
+      return;
+    }
+
+    // Сколько фиксаций при текущих настройках
+    const fixCount = countFixations();
+
+    dom.csvInfo.hidden = false;
+    dom.csvInfo.innerHTML = `
+      <span class="upload-tag">CSV</span>
+      <span class="upload-name">${escapeHtml(fileName)}</span>
+      <span class="upload-meta">
+        ${parsed.rows.length} строк · ${stimuli.length || '—'} стимул${pluralStim(stimuli.length)} ·
+        ${fixCount} фиксаци${pluralFix(fixCount)}
+      </span>
+      <button class="upload-replace" data-act="replace-csv" type="button">↻ заменить</button>
+      <div class="upload-mapping">
+        <strong>Распознано:</strong>
+        x = <code>${escapeHtml(mapping.x || '?')}</code> ·
+        y = <code>${escapeHtml(mapping.y || '?')}</code> ·
+        type = <code>${escapeHtml(mapping.type || '—')}</code> ·
+        duration = <code>${escapeHtml(mapping.duration || '—')}</code> ·
+        participant = <code>${escapeHtml(mapping.participant || '—')}</code>
+      </div>
+    `;
+    dom.csvInfo.querySelector('[data-act="replace-csv"]').addEventListener('click', () => {
+      state.csv = { raw: null, parsed: null, mapping: null, stimuli: [], fileName: '' };
+      state.result = null;
+      renderCsvInfo();
+      renderStimulusFilter();
+      hideResults();
+      updateRunButton();
+      dom.csvFile.value = '';
+    });
+  }
+
+  function renderStimulusFilter() {
+    const list = state.csv.stimuli;
+    if (!list.length) {
+      dom.stimFilter.innerHTML = '<option value="">— нет данных —</option>';
+      return;
+    }
+    let html = '';
+    if (list.length > 1) html += '<option value="">все фиксации в файле</option>';
+    for (const s of list) {
+      const sel = s === state.params.selectedStimulus ? ' selected' : '';
+      html += `<option value="${escapeAttr(s)}"${sel}>${escapeHtml(s)}</option>`;
+    }
+    dom.stimFilter.innerHTML = html;
+  }
+
+  function countFixations() {
+    if (!state.csv.parsed || !state.csv.mapping) return 0;
+    return extractFixations(
+      state.csv.parsed.rows,
+      state.csv.mapping,
+      { stimulus: state.params.selectedStimulus || null }
+    ).length;
+  }
+
+  /** Границы координат фиксаций — для подсказки про размер кадра. */
+  function getCoordsBounds() {
+    if (!state.csv.parsed) return null;
+    const fixs = extractFixations(
+      state.csv.parsed.rows,
+      state.csv.mapping,
+      { stimulus: state.params.selectedStimulus || null }
+    );
+    if (!fixs.length) return null;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const f of fixs) {
+      if (f.x < minX) minX = f.x;
+      if (f.x > maxX) maxX = f.x;
+      if (f.y < minY) minY = f.y;
+      if (f.y > maxY) maxY = f.y;
+    }
+    return { minX, maxX, minY, maxY };
+  }
+
+  /** Подсказка под полями размера кадра — соотносит размер с координатами. */
+  function updateFrameHint() {
+    if (!dom.frameHint) return;
+    if (!state.csv.parsed) {
+      dom.frameHint.textContent = '';
+      return;
+    }
+    const bounds = getCoordsBounds();
+    if (!bounds) { dom.frameHint.textContent = ''; return; }
+
+    const fw = state.params.frameW;
+    const fh = state.params.frameH;
+    const maxX = Math.round(bounds.maxX);
+    const maxY = Math.round(bounds.maxY);
+
+    if (!fw || !fh) {
+      dom.frameHint.innerHTML = `координаты до <strong>${maxX} × ${maxY}</strong>`;
+      dom.frameHint.className = 'frame-hint';
+      return;
+    }
+
+    const xOverflow = maxX > fw * 1.02;
+    const yOverflow = maxY > fh * 1.02;
+    if (xOverflow || yOverflow) {
+      dom.frameHint.innerHTML = `⚠ координаты до <strong>${maxX} × ${maxY}</strong> — превышают кадр ${fw} × ${fh}`;
+      dom.frameHint.className = 'frame-hint frame-hint-warn';
+    } else {
+      dom.frameHint.innerHTML = `координаты до <strong>${maxX} × ${maxY}</strong> — укладываются в кадр ${fw} × ${fh}`;
+      dom.frameHint.className = 'frame-hint frame-hint-ok';
+    }
+  }
+
+  function renderParams() {
+    dom.method.value = state.params.method;
+    dom.sigma.value = state.params.sigmaPx;
+    dom.sigmaVal.textContent = state.params.sigmaPx;
+  }
+
+  function updateRunButton() {
+    const ready = !!state.stim && !!state.csv.parsed;
+    dom.runBtn.disabled = !ready;
+    dom.params.hidden = !state.csv.parsed;
+  }
+
+  /* ============================================================
+     Главный расчёт
+     ============================================================ */
+
+  async function runComparison() {
+    if (!state.stim || !state.csv.parsed) return;
+
+    setBusy(true, 'Считаем салиентность…');
+    await new Promise((r) => setTimeout(r, 0));
+
+    try {
+      const fixations = extractFixations(
+        state.csv.parsed.rows,
+        state.csv.mapping,
+        { stimulus: state.params.selectedStimulus || null }
+      );
+
+      if (!fixations.length) {
+        toastError('После фильтрации не осталось ни одной фиксации. Проверьте: правильно ли распознался тип события и фильтр по стимулу.');
+        setBusy(false);
+        return;
+      }
+
+      // Размер кадра, в котором регистрировались фиксации.
+      // По умолчанию — размер изображения стимула; пользователь может переопределить.
+      const frameW = state.params.frameW || state.stim.origW;
+      const frameH = state.params.frameH || state.stim.origH;
+
+      // Если координаты сильно выходят за пределы кадра — мягкое предупреждение
+      const bounds = getCoordsBounds();
+      if (bounds && (bounds.maxX > frameW * 1.05 || bounds.maxY > frameH * 1.05)) {
+        toastInfo(
+          `Координаты доходят до ${Math.round(bounds.maxX)} × ${Math.round(bounds.maxY)}, ` +
+          `а указанный размер кадра ${frameW} × ${frameH}. ` +
+          `Часть точек окажется за пределами кадра. ` +
+          `Уточните размер кадра в параметрах.`,
+          8000
+        );
+      }
+
+      setBusy(true, 'Карта салиентности…');
+      await new Promise((r) => setTimeout(r, 0));
+      const sal = computeSaliency(state.stim.imageData, state.params.method);
+
+      setBusy(true, 'Карта айтрекинга (KDE)…');
+      await new Promise((r) => setTimeout(r, 0));
+      const fixmap = buildFixationMap(fixations, frameW, frameH, state.params.sigmaPx);
+
+      setBusy(true, 'Метрики…');
+      await new Promise((r) => setTimeout(r, 0));
+      const r  = pearsonR(sal, fixmap);
+      const ns = computeNSS(fixations, sal, frameW, frameH);
+      const auc = computeAUCJudd(fixations, sal, frameW, frameH);
+
+      const diff = differenceMap(sal, fixmap);
+
+      state.result = {
+        sal, fixmap, diff,
+        fixations,
+        method: state.params.method,
+        sigma: state.params.sigmaPx,
+        stimulusName: state.params.selectedStimulus || state.csv.stimuli[0] || '',
+        metrics: {
+          pearson: r,
+          nss: ns,
+          auc: auc,
+          nFixations: fixations.length,
+          nParticipants: countParticipants(fixations),
+        },
+      };
+
+      renderResults();
+      setBusy(false);
+      toastSuccess(`Готово · ${fixations.length} фиксаций · NSS = ${ns.toFixed(3)} · AUC = ${auc.toFixed(3)}`);
+    } catch (err) {
+      setBusy(false);
+      toastError(err.message || String(err));
+      console.error(err);
+    }
+  }
+
+  function countParticipants(fixations) {
+    const set = new Set();
+    for (const f of fixations) if (f.participant != null) set.add(f.participant);
+    return set.size;
+  }
+
+  /* ============================================================
+     Рендер результатов
+     ============================================================ */
+
+  function renderResults() {
+    if (!state.result) return;
+    dom.results.hidden = false;
+
+    renderEvalMetrics();
+    renderStages();
+  }
+
+  function renderEvalMetrics() {
+    const m = state.result.metrics;
+    const cards = [
+      {
+        key: 'pearson',
+        label: 'Pearson r',
+        value: m.pearson.toFixed(3),
+        hint: interpretR(m.pearson),
+      },
+      {
+        key: 'nss',
+        label: 'NSS',
+        value: m.nss.toFixed(3),
+        hint: interpretNSS(m.nss),
+      },
+      {
+        key: 'auc',
+        label: 'AUC-Judd',
+        value: m.auc.toFixed(3),
+        hint: interpretAUC(m.auc),
+      },
+      {
+        key: 'n',
+        label: 'Фиксаций',
+        value: String(m.nFixations),
+        hint: m.nParticipants > 0
+          ? `от ${m.nParticipants} участник${pluralPart(m.nParticipants)}`
+          : 'обработано',
+      },
+    ];
+
+    dom.metricsBox.innerHTML = cards.map((c) => `
+      <div class="metric-card" title="${escapeAttr(c.hint)}">
+        <div class="metric-label">${c.label}</div>
+        <div class="metric-value">${c.value}</div>
+        <div class="metric-key">${escapeHtml(c.hint)}</div>
+      </div>
+    `).join('');
+  }
+
+  function interpretR(r) {
+    const a = Math.abs(r);
+    if (a < 0.1) return 'нет связи';
+    if (a < 0.3) return 'слабая';
+    if (a < 0.5) return 'умеренная';
+    if (a < 0.7) return 'заметная';
+    return 'сильная';
+  }
+
+  function interpretNSS(n) {
+    if (n < 0.5) return 'модель ≈ случайной';
+    if (n < 1.0) return 'слабое предсказание';
+    if (n < 2.0) return 'уверенное предсказание';
+    return 'высокое соответствие';
+  }
+
+  function interpretAUC(a) {
+    if (a < 0.55) return '≈ случайно';
+    if (a < 0.65) return 'слабое';
+    if (a < 0.75) return 'среднее';
+    if (a < 0.85) return 'хорошее';
+    return 'высокое';
+  }
+
+  function renderStages() {
+    const { sal, fixmap, diff, method } = state.result;
+    const { origImage, origW, origH } = state.stim;
+
+    // Ограничим размер по ширине
+    const maxW = 460;
+    const ratio = Math.min(1, maxW / origW);
+    const dispW = Math.max(1, Math.round(origW * ratio));
+    const dispH = Math.max(1, Math.round(origH * ratio));
+
+    const alpha = 0.7;
+
+    const stageA = renderOverlay(origImage, sal,    TARGET, TARGET, dispW, dispH, 'jet', alpha);
+    const stageB = renderOverlay(origImage, fixmap, TARGET, TARGET, dispW, dispH, 'jet', alpha);
+    const stageC = renderDiffStage(origImage, diff, dispW, dispH);
+
+    dom.stageRow.innerHTML = '';
+    dom.stageRow.appendChild(makeStage('Салиентность', `${METHOD_LABELS[method]}`, stageA));
+    dom.stageRow.appendChild(makeStage('Айтрекинг', `KDE, σ = ${state.result.sigma} px`, stageB));
+    dom.stageRow.appendChild(makeStage('Разница', 'salience − fixation', stageC));
+  }
+
+  function makeStage(title, subtitle, canvas) {
+    const wrap = document.createElement('div');
+    wrap.className = 'stage-card';
+    wrap.innerHTML = `
+      <div class="stage-card-head">
+        <div class="stage-card-title">${escapeHtml(title)}</div>
+        <div class="stage-card-sub">${escapeHtml(subtitle)}</div>
+      </div>
+      <div class="stage-card-body"></div>
+    `;
+    wrap.querySelector('.stage-card-body').appendChild(canvas);
+    return wrap;
+  }
+
+  /**
+   * Разностная карта — diverging colormap blue→white→red.
+   * Положительные значения (модель переоценила) — красные, отрицательные (недооценила) — синие.
+   */
+  function renderDiffStage(srcImg, diff, dispW, dispH) {
+    // Найдём максимальную абсолютную разницу для нормировки
+    let maxAbs = 0;
+    for (let i = 0; i < diff.length; i++) {
+      const a = Math.abs(diff[i]);
+      if (a > maxAbs) maxAbs = a;
+    }
+    if (maxAbs === 0) maxAbs = 1;
+
+    // Создаём небольшой canvas с diverging cmap
+    const small = document.createElement('canvas');
+    small.width = TARGET;
+    small.height = TARGET;
+    const sctx = small.getContext('2d');
+    const img = sctx.createImageData(TARGET, TARGET);
+    for (let i = 0; i < diff.length; i++) {
+      const v = diff[i] / maxAbs;       // в [-1, +1]
+      const [r, g, b] = divergingColormap(v);
+      const a = Math.round(Math.min(1, Math.abs(v) + 0.15) * 200);
+      img.data[i * 4]     = r;
+      img.data[i * 4 + 1] = g;
+      img.data[i * 4 + 2] = b;
+      img.data[i * 4 + 3] = a;
+    }
+    sctx.putImageData(img, 0, 0);
+
+    const out = document.createElement('canvas');
+    out.width = dispW;
+    out.height = dispH;
+    const octx = out.getContext('2d');
+    octx.imageSmoothingEnabled = true;
+    octx.imageSmoothingQuality = 'high';
+    octx.drawImage(srcImg, 0, 0, dispW, dispH);
+    octx.drawImage(small, 0, 0, dispW, dispH);
+    return out;
+  }
+
+  /** Простая diverging colormap: −1 → синий, 0 → серый, +1 → красный. */
+  function divergingColormap(v) {
+    const t = (v + 1) / 2;
+    if (t < 0.5) {
+      // blue to gray
+      const k = t * 2;
+      return [Math.round(60 + 195 * k), Math.round(60 + 195 * k), 220];
+    } else {
+      const k = (t - 0.5) * 2;
+      return [220, Math.round(255 - 195 * k), Math.round(255 - 195 * k)];
+    }
+  }
+
+  /* ============================================================
+     Экспорт
+     ============================================================ */
+
+  function exportCsvReport() {
+    if (!state.result) return;
+    const r = state.result;
+    const m = r.metrics;
+    const rows = [];
+    rows.push(['# Saliency vs Eye-tracking · ' + new Date().toISOString()]);
+    rows.push(['# stimulus', state.stim.name]);
+    rows.push(['# fixation_csv', state.csv.fileName]);
+    rows.push(['# method', r.method]);
+    rows.push(['# kde_sigma_px', r.sigma]);
+    rows.push([]);
+    rows.push(['metric', 'value', 'interpretation']);
+    rows.push(['pearson_r', m.pearson.toFixed(4), interpretR(m.pearson)]);
+    rows.push(['nss',       m.nss.toFixed(4),    interpretNSS(m.nss)]);
+    rows.push(['auc_judd',  m.auc.toFixed(4),    interpretAUC(m.auc)]);
+    rows.push(['n_fixations', m.nFixations, '']);
+    rows.push(['n_participants', m.nParticipants, '']);
+
+    const fname = `${stripExt(state.stim.name)}_eyetracking_report.csv`;
+    downloadCSV(rows, fname);
+    toastSuccess(`Сохранено: ${fname}`);
+  }
+
+  async function exportZipMaps() {
+    if (!state.result) return;
+    setBusy(true, 'Готовим PNG…');
+    await new Promise((r) => setTimeout(r, 0));
+
+    const { sal, fixmap } = state.result;
+    const { origImage, origW, origH, name } = state.stim;
+    const settings = { colormap: 'jet', alpha: 0.7 };
+
+    const entries = [];
+    const overlayA = renderOverlay(origImage, sal,    TARGET, TARGET, origW, origH, settings.colormap, settings.alpha);
+    const overlayB = renderOverlay(origImage, fixmap, TARGET, TARGET, origW, origH, settings.colormap, settings.alpha);
+    const heatA    = renderHeatmap(sal,    TARGET, TARGET, origW, origH, settings.colormap, settings.alpha);
+    const heatB    = renderHeatmap(fixmap, TARGET, TARGET, origW, origH, settings.colormap, settings.alpha);
+
+    const base = stripExt(name);
+    for (const [c, label] of [
+      [overlayA, '_saliency_overlay.png'],
+      [overlayB, '_fixations_overlay.png'],
+      [heatA,    '_saliency_map.png'],
+      [heatB,    '_fixations_map.png'],
+    ]) {
+      const blob = await canvasToBlob(c, 'image/png');
+      if (blob) entries.push({ name: base + label, blob });
+    }
+
+    await downloadZip(entries, `${base}_eyetracking_maps.zip`);
+    setBusy(false);
+    toastSuccess(`Сохранено: ${entries.length} карт в ZIP`);
+  }
+
+  /* ============================================================
+     UI utilities
+     ============================================================ */
+
+  function setBusy(busy, msg = '') {
+    state.busy = busy;
+    if (!dom.busy) return;
+    dom.busy.hidden = !busy;
+    if (busy) {
+      const t = dom.busy.querySelector('.busy-text');
+      if (t) t.textContent = msg;
+    }
+  }
+
+  function hideResults() {
+    dom.results.hidden = true;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  function pluralStim(n) {
+    const m = n % 10;
+    if (n % 100 >= 11 && n % 100 <= 14) return 'ов';
+    if (m === 1) return '';
+    if (m >= 2 && m <= 4) return 'а';
+    return 'ов';
+  }
+
+  function pluralFix(n) {
+    const m = n % 10;
+    if (n % 100 >= 11 && n % 100 <= 14) return 'й';
+    if (m === 1) return 'я';
+    if (m >= 2 && m <= 4) return 'и';
+    return 'й';
+  }
+
+  function pluralPart(n) {
+    const m = n % 10;
+    if (n % 100 >= 11 && n % 100 <= 14) return 'ов';
+    if (m === 1) return 'а';
+    if (m >= 2 && m <= 4) return 'ов';
+    return 'ов';
+  }
+  // expose
+
+})();
+</script>
+</body>
+</html>

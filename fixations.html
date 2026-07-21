@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Айтрекинг × Салиентность · сравнение карт</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
+</head>
+<body>
+  <div class="grid-bg" aria-hidden="true"></div>
+
+  <header class="page-header">
+    <a class="logo" href="salience.html" title="К основному модулю салиентности">
+      <span class="logo-mark">↔</span>
+      <span class="logo-text">Айтрекинг × Салиентность</span>
+      <span class="logo-en">(Eye-tracking ↔ Saliency)</span>
+    </a>
+    <div class="header-actions">
+      <a class="help-btn" href="salience.html#help-eyetracking" title="Открыть руководство">
+        <span class="help-mark">?</span>
+        <span>Помощь</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <header class="panel-header">
+      <h2 class="panel-title">
+        <span class="panel-num">↔</span>
+        Сравнение айтрекинга и моделей салиентности
+      </h2>
+      <p class="panel-desc">
+        Загрузите стимул и CSV с координатами фиксаций. Модуль построит карту салиентности
+        выбранным методом (FT, DoG, Local Contrast, Spectral Residual) и тепловую карту
+        ваших айтрекерных данных через KDE, после чего рассчитает три стандартные метрики
+        соответствия: Pearson r, NSS и AUC-Judd.
+      </p>
+    </header>
+
+    <!-- ==================== ЗАГРУЗКА ==================== -->
+    <section class="upload-grid">
+      <div class="upload-card">
+        <div class="upload-card-head">
+          <span class="upload-step">01</span>
+          <h3>Стимул</h3>
+        </div>
+        <div class="dropzone" id="stim-dropzone">
+          <input type="file" id="stim-file" accept="image/jpeg,image/png,image/webp,image/bmp" hidden>
+          <div class="dropzone-inner">
+            <div class="dropzone-icon">⤓</div>
+            <p class="dropzone-text">Перетащите изображение</p>
+            <button class="btn btn-primary" id="stim-pick" type="button">Выбрать файл</button>
+            <p class="dropzone-hint">JPG · PNG · WebP · BMP</p>
+          </div>
+        </div>
+        <div class="upload-info" id="stim-info" hidden></div>
+      </div>
+
+      <div class="upload-card">
+        <div class="upload-card-head">
+          <span class="upload-step">02</span>
+          <h3>Фиксации (CSV)</h3>
+        </div>
+        <div class="dropzone" id="csv-dropzone">
+          <input type="file" id="csv-file" accept=".csv,.tsv,.txt" hidden>
+          <div class="dropzone-inner">
+            <div class="dropzone-icon">⤓</div>
+            <p class="dropzone-text">Перетащите CSV-файл</p>
+            <button class="btn btn-primary" id="csv-pick" type="button">Выбрать файл</button>
+            <p class="dropzone-hint">x_px, y_px, type · разделитель «;» или «,»</p>
+          </div>
+        </div>
+        <div class="upload-info" id="csv-info" hidden></div>
+      </div>
+    </section>
+
+    <!-- ==================== ПАРАМЕТРЫ ==================== -->
+    <section class="settings-panel" id="params" hidden>
+      <div class="settings-grid settings-grid-3">
+        <div class="setting">
+          <label for="param-method">Метод салиентности</label>
+          <div class="select-wrap">
+            <select id="param-method">
+              <option value="ft">FT — Frequency-Tuned</option>
+              <option value="dog">DoG — Difference of Gaussians</option>
+              <option value="local">Local Color Contrast</option>
+              <option value="sr">SR — Spectral Residual</option>
+            </select>
+          </div>
+        </div>
+        <div class="setting">
+          <label for="param-sigma">σ ядра KDE, px <span class="setting-val" id="param-sigma-val">30</span></label>
+          <input type="range" id="param-sigma" min="5" max="100" value="30">
+        </div>
+        <div class="setting">
+          <label for="param-stim-filter">Стимул</label>
+          <div class="select-wrap">
+            <select id="param-stim-filter">
+              <option value="">— нет данных —</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="frame-row">
+        <div class="frame-row-label">Размер кадра, в котором регистрировались координаты</div>
+        <div class="frame-row-fields">
+          <label class="frame-field">
+            <span>W, px</span>
+            <input type="number" id="frame-w" min="1" step="1">
+          </label>
+          <span class="frame-x">×</span>
+          <label class="frame-field">
+            <span>H, px</span>
+            <input type="number" id="frame-h" min="1" step="1">
+          </label>
+          <button class="btn btn-ghost btn-small" id="frame-reset" type="button" title="Использовать размер изображения">
+            ↺ из изображения
+          </button>
+          <span class="frame-hint" id="frame-hint"></span>
+        </div>
+      </div>
+
+      <div class="run-row">
+        <button class="btn btn-primary btn-large" id="run-btn" type="button" disabled>
+          Сравнить карты
+        </button>
+      </div>
+    </section>
+
+    <!-- ==================== РЕЗУЛЬТАТЫ ==================== -->
+    <section class="results-block" id="results" hidden>
+      <div class="busy-overlay busy-overlay-inline" id="busy" hidden>
+        <span class="busy-spinner"></span>
+        <span class="busy-text">…</span>
+      </div>
+
+      <h3 class="section-title">Метрики соответствия
+        <span class="section-sub">насколько модель салиентности предсказывает реальные фиксации</span>
+      </h3>
+      <div class="metrics-grid" id="eval-metrics"></div>
+
+      <h3 class="section-title">Карты
+        <span class="section-sub">наложение поверх стимула</span>
+      </h3>
+      <div class="three-stage" id="stage-row"></div>
+
+      <div class="toolbar" style="margin-top:24px">
+        <span class="toolbar-spacer"></span>
+        <button class="btn" id="dl-csv" type="button">↓ CSV отчёт</button>
+        <button class="btn btn-primary" id="dl-zip" type="button">↓ ZIP всех карт</button>
+      </div>
+    </section>
+
+    <footer class="page-footer">
+      <span class="foot-mark">◎</span>
+      <span>Локальный модуль · все вычисления в браузере · данные не покидают компьютер</span>
+    </footer>
+
+  </main>
+
+  <script type="module" src="js/fixations-app.js"></script>
+</body>
+</html>
