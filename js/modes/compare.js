@@ -77,6 +77,7 @@ function cacheDom() {
   dom.cPreview    = document.getElementById('compound-preview');
   dom.cGrid       = document.getElementById('compound-grid');
   dom.cPairs      = document.getElementById('compound-pairs');
+  dom.cMargins    = document.getElementById('compound-margins');
 }
 
 function bindSubtabs() {
@@ -464,7 +465,9 @@ const compound = {
   loaded: null,        // { imageData, origImage, origW, origH, name, file }
   grid: '2x2',        // '2x1' | '1x2' | '2x2'
   sal: null,           // карта салиентности ВСЕГО составного изображения
-  regions: [],        // [{ name, row, col, sx, sy, sw, sh, thumb, sal, metrics, share }]
+  regions: [],        // [{ name, row, col, sx, sy, sw, sh, cell, trimmed, thumb, sal, metrics, share }]
+  ignoreMargins: true, // не учитывать однородные поля вокруг картинок
+  marginsFound: 0,     // в скольких ячейках найдены поля
   showHeat: true,
   busy: false,
 };
@@ -508,11 +511,13 @@ function bindCompound() {
       if (g === compound.grid) return;
       dom.cGridToggle.forEach((b) => b.classList.toggle('active', b === btn));
       compound.grid = g;
-      if (compound.sal) {
-        splitRegions();
-        renderCompoundAll();
-      }
+      if (compound.loaded) computeCompound();
     });
+  });
+
+  dom.cMargins?.addEventListener('change', () => {
+    compound.ignoreMargins = dom.cMargins.checked;
+    if (compound.loaded) computeCompound();
   });
 
   dom.cDlCsv.addEventListener('click', exportCompoundCSV);
@@ -554,58 +559,205 @@ async function handleCompoundFile(file) {
  * метрики лежат на одной шкале и показывают, какой подстимул заметнее
  * в контексте остальных. (Если нормировать каждый регион в [0, 1]
  * отдельно, все регионы по построению выглядят одинаково «яркими».)
+ *
+ * Поля вокруг картинок. Если стимулы вписаны в ячейки с однородным
+ * фоном (белые поля), фон сам даёт салиентность (для FT белый далёк от
+ * среднего цвета сцены) и ложные края по контуру картинок. Поэтому
+ * в каждой ячейке ищется прямоугольник содержимого; всё вне него
+ * перед расчётом заливается средним цветом картинок, а после расчёта
+ * обнуляется и в метрики не входит.
  */
 async function computeCompound() {
   if (!compound.loaded) return;
   setCompoundBusy(true, 'Вычисляем салиентность…');
   await new Promise((r) => setTimeout(r, 0));
-  compound.sal = computeSaliency(compound.loaded.imageData, getSettings().method);
-  splitRegions();
+
+  const cells = gridCells();
+  const boxes = compound.ignoreMargins ? detectContentBoxes(compound.loaded.origImage, cells) : cells.map(() => null);
+  compound.marginsFound = boxes.filter(Boolean).length;
+  const rects = cells.map((c, i) => boxes[i] || c);
+
+  const { imageData } = compound.loaded;
+  const gw = imageData.width, gh = imageData.height;
+  const gridRects = rects.map((r) => toGrid(r, gw, gh));
+
+  let input = imageData;
+  if (compound.marginsFound) input = fillOutside(imageData, gridRects);
+  const sal = computeSaliency(input, getSettings().method);
+  if (compound.marginsFound) maskOutside(sal, gridRects);
+  compound.sal = sal;
+
+  buildRegions(cells, rects, gridRects, boxes);
   renderCompoundAll();
   setCompoundBusy(false);
 }
 
-function splitRegions() {
+/** Ячейки сетки в пикселях оригинала — без пропусков и перекрытий. */
+function gridCells() {
   const { rows, cols } = GRID_DIMS[compound.grid];
-  const { origImage, origW, origH } = compound.loaded;
-  const sal = compound.sal;
-  const gw = sal.width, gh = sal.height;
-
-  // Сумма салиентности по всей карте — для доли каждого региона
-  let total = 0;
-  for (let i = 0; i < sal.length; i++) total += sal[i];
-
-  compound.regions = [];
+  const { origW, origH } = compound.loaded;
+  const cells = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      // Границы в пикселях оригинала — без пропусков и перекрытий
-      const sx = Math.round(c * origW / cols);
-      const sy = Math.round(r * origH / rows);
-      const sw = (c === cols - 1 ? origW : Math.round((c + 1) * origW / cols)) - sx;
-      const sh = (r === rows - 1 ? origH : Math.round((r + 1) * origH / rows)) - sy;
-      // Те же границы на сетке карты
-      const gx0 = Math.round(c * gw / cols);
-      const gy0 = Math.round(r * gh / rows);
-      const gx1 = c === cols - 1 ? gw : Math.round((c + 1) * gw / cols);
-      const gy1 = r === rows - 1 ? gh : Math.round((r + 1) * gh / rows);
-
-      const regSal = cropMap(sal, gw, gx0, gy0, gx1, gy1);
-      let regSum = 0;
-      for (let i = 0; i < regSal.length; i++) regSum += regSal[i];
-
-      const { thumb } = cropToImageData(origImage, sx, sy, sw, sh);
-      compound.regions.push({
-        name: `R${r + 1}C${c + 1}`,
-        row: r,
-        col: c,
-        sx, sy, sw, sh,
-        thumb,
-        sal: regSal,
-        metrics: computeMetrics(regSal),
-        share: total > 0 ? +(regSum / total * 100).toFixed(2) : 0,
-      });
+      const x0 = Math.round(c * origW / cols);
+      const y0 = Math.round(r * origH / rows);
+      const x1 = c === cols - 1 ? origW : Math.round((c + 1) * origW / cols);
+      const y1 = r === rows - 1 ? origH : Math.round((r + 1) * origH / rows);
+      cells.push({ row: r, col: c, x0, y0, x1, y1 });
     }
   }
+  return cells;
+}
+
+/** Прямоугольник оригинала → прямоугольник сетки карты (не меньше 1 px). */
+function toGrid(r, gw, gh) {
+  const { origW, origH } = compound.loaded;
+  const x0 = Math.min(gw - 1, Math.floor(r.x0 * gw / origW));
+  const y0 = Math.min(gh - 1, Math.floor(r.y0 * gh / origH));
+  const x1 = Math.max(x0 + 1, Math.min(gw, Math.ceil(r.x1 * gw / origW)));
+  const y1 = Math.max(y0 + 1, Math.min(gh, Math.ceil(r.y1 * gh / origH)));
+  return { x0, y0, x1, y1 };
+}
+
+/**
+ * Поиск картинок внутри ячеек.
+ * 1) Цвет фона — медиана пикселей по внешней рамке изображения; фон
+ *    признаётся, только если рамка однородна (≥ 90 % пикселей близки
+ *    к медиане). Прозрачные пиксели PNG тоже считаются фоном.
+ * 2) В каждой ячейке строка/столбец — «содержимое», если в них хотя бы
+ *    1.5 % пикселей заметно отличаются от фона. Прямоугольник от первой
+ *    до последней такой строки и столбца — картинка.
+ * Возвращает массив прямоугольников в пикселях оригинала (null — полей
+ * в ячейке нет или найти картинку не удалось).
+ */
+function detectContentBoxes(img, cells) {
+  const { origW, origH } = compound.loaded;
+  const k = Math.min(1, 900 / Math.max(origW, origH));
+  const w = Math.max(1, Math.round(origW * k));
+  const h = Math.max(1, Math.round(origH * k));
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, w, h);
+  const d = ctx.getImageData(0, 0, w, h).data;
+
+  const TOL = 20;
+  const px = (x, y) => (y * w + x) * 4;
+
+  // Фон по внешней рамке (2 px)
+  const rs = [], gs = [], bs = [];
+  let transparent = 0, total = 0;
+  const pushPx = (x, y) => {
+    const i = px(x, y);
+    total++;
+    if (d[i + 3] < 128) { transparent++; return; }
+    rs.push(d[i]); gs.push(d[i + 1]); bs.push(d[i + 2]);
+  };
+  for (let x = 0; x < w; x++) for (const y of [0, 1, h - 2, h - 1]) if (y >= 0 && y < h) pushPx(x, y);
+  for (let y = 2; y < h - 2; y++) for (const x of [0, 1, w - 2, w - 1]) if (x >= 0 && x < w) pushPx(x, y);
+  const med = (a) => { const s2 = a.slice().sort((p, q) => p - q); return s2[s2.length >> 1] ?? 0; };
+  const bg = [med(rs), med(gs), med(bs)];
+  let close = transparent;
+  for (let i = 0; i < rs.length; i++) {
+    if (Math.max(Math.abs(rs[i] - bg[0]), Math.abs(gs[i] - bg[1]), Math.abs(bs[i] - bg[2])) <= TOL) close++;
+  }
+  if (!total || close / total < 0.9) return cells.map(() => null);
+
+  const isContent = (x, y) => {
+    const i = px(x, y);
+    if (d[i + 3] < 128) return false;
+    return Math.max(Math.abs(d[i] - bg[0]), Math.abs(d[i + 1] - bg[1]), Math.abs(d[i + 2] - bg[2])) > TOL;
+  };
+
+  return cells.map((c) => {
+    const cx0 = Math.floor(c.x0 * k), cy0 = Math.floor(c.y0 * k);
+    const cx1 = Math.min(w, Math.ceil(c.x1 * k)), cy1 = Math.min(h, Math.ceil(c.y1 * k));
+    const cw = cx1 - cx0, ch = cy1 - cy0;
+    if (cw < 4 || ch < 4) return null;
+    const rowCnt = new Int32Array(ch), colCnt = new Int32Array(cw);
+    for (let y = cy0; y < cy1; y++) {
+      for (let x = cx0; x < cx1; x++) {
+        if (isContent(x, y)) { rowCnt[y - cy0]++; colCnt[x - cx0]++; }
+      }
+    }
+    const rowMin = Math.max(2, 0.015 * cw), colMin = Math.max(2, 0.015 * ch);
+    let top = -1, bottom = -1, left = -1, right = -1;
+    for (let i = 0; i < ch; i++) if (rowCnt[i] >= rowMin) { if (top < 0) top = i; bottom = i; }
+    for (let i = 0; i < cw; i++) if (colCnt[i] >= colMin) { if (left < 0) left = i; right = i; }
+    if (top < 0 || left < 0) return null;
+    const bw = right - left + 1, bh = bottom - top + 1;
+    // Содержимое почти на всю ячейку — полей нет; слишком мелкое — скорее шум
+    if (bw * bh > 0.97 * cw * ch || bw * bh < 0.03 * cw * ch) return null;
+    return {
+      row: c.row, col: c.col,
+      x0: Math.max(c.x0, Math.floor((cx0 + left) / k)),
+      y0: Math.max(c.y0, Math.floor((cy0 + top) / k)),
+      x1: Math.min(c.x1, Math.ceil((cx0 + right + 1) / k)),
+      y1: Math.min(c.y1, Math.ceil((cy0 + bottom + 1) / k)),
+    };
+  });
+}
+
+/** Копия ImageData, где всё вне прямоугольников залито средним цветом содержимого. */
+function fillOutside(imageData, rects) {
+  const { width: w, height: h, data } = imageData;
+  const inside = new Uint8Array(w * h);
+  for (const r of rects) {
+    for (let y = r.y0; y < r.y1; y++) inside.fill(1, y * w + r.x0, y * w + r.x1);
+  }
+  let sr = 0, sg = 0, sb = 0, n = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (!inside[i]) continue;
+    sr += data[i * 4]; sg += data[i * 4 + 1]; sb += data[i * 4 + 2]; n++;
+  }
+  if (!n) return imageData;
+  const mr = sr / n, mg = sg / n, mb = sb / n;
+  const out = new ImageData(new Uint8ClampedArray(data), w, h);
+  for (let i = 0; i < w * h; i++) {
+    if (inside[i]) continue;
+    out.data[i * 4] = mr; out.data[i * 4 + 1] = mg; out.data[i * 4 + 2] = mb; out.data[i * 4 + 3] = 255;
+  }
+  return out;
+}
+
+/** Обнулить карту вне прямоугольников (поля не показываются и не входят в доли). */
+function maskOutside(sal, rects) {
+  const w = sal.width;
+  const inside = new Uint8Array(sal.length);
+  for (const r of rects) {
+    for (let y = r.y0; y < r.y1; y++) inside.fill(1, y * w + r.x0, y * w + r.x1);
+  }
+  for (let i = 0; i < sal.length; i++) if (!inside[i]) sal[i] = 0;
+}
+
+function buildRegions(cells, rects, gridRects, boxes) {
+  const { origImage } = compound.loaded;
+  const sal = compound.sal;
+  const gw = sal.width;
+
+  const regs = cells.map((c, i) => {
+    const r = rects[i], g = gridRects[i];
+    const regSal = cropMap(sal, gw, g.x0, g.y0, g.x1, g.y1);
+    let sum = 0;
+    for (let j = 0; j < regSal.length; j++) sum += regSal[j];
+    const sx = r.x0, sy = r.y0, sw = r.x1 - r.x0, sh = r.y1 - r.y0;
+    const { thumb } = cropToImageData(origImage, sx, sy, sw, sh);
+    return {
+      name: `R${c.row + 1}C${c.col + 1}`,
+      row: c.row,
+      col: c.col,
+      sx, sy, sw, sh,
+      cell: c,
+      trimmed: !!boxes[i],
+      thumb,
+      sal: regSal,
+      metrics: computeMetrics(regSal),
+      sum,
+    };
+  });
+  const total = regs.reduce((t, r) => t + r.sum, 0);
+  for (const r of regs) r.share = total > 0 ? +(r.sum / total * 100).toFixed(2) : 0;
+  compound.regions = regs;
 }
 
 function renderCompoundAll() {
@@ -665,15 +817,24 @@ function renderCompoundPreview() {
     ctx.stroke();
   }
 
-  // Подписи регионов с долей салиентности
+  // Рамки найденных картинок (поля не учитываются)
   ctx.setLineDash([]);
+  const kx = dispW / origW, ky = dispH / origH;
+  ctx.strokeStyle = 'rgba(74, 222, 128, 0.9)';
+  ctx.lineWidth = 1.5;
+  for (const reg of compound.regions) {
+    if (!reg.trimmed) continue;
+    ctx.strokeRect(reg.sx * kx + 0.5, reg.sy * ky + 0.5, reg.sw * kx - 1, reg.sh * ky - 1);
+  }
+
+  // Подписи регионов с долей салиентности
   ctx.font = '11px JetBrains Mono, monospace';
   ctx.fillStyle = 'rgba(74, 222, 128, 0.95)';
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
   ctx.lineWidth = 3;
   for (const reg of compound.regions) {
-    const x = reg.col * (dispW / cols) + 8;
-    const y = reg.row * (dispH / rows) + 16;
+    const x = reg.cell.x0 * kx + 8;
+    const y = reg.cell.y0 * ky + 16;
     const label = `${reg.name} · ${reg.share}%`;
     ctx.strokeText(label, x, y);
     ctx.fillText(label, x, y);
@@ -699,7 +860,7 @@ function renderCompoundGrid() {
     card.innerHTML = `
       <div class="result-thumb"></div>
       <div class="result-body">
-        <div class="result-name">${reg.name} · ${reg.sw}×${reg.sh}px</div>
+        <div class="result-name">${reg.name} · ${reg.sw}×${reg.sh}px${reg.trimmed ? ' · без полей' : ''}</div>
         <div class="result-stats">
           ${reg.metrics ? `
             <span class="result-stat" title="Доля всей салиентности изображения, приходящаяся на регион">доля <strong>${reg.share}%</strong></span>
@@ -803,7 +964,10 @@ function renderCompoundInfo() {
   if (!compound.loaded) { dom.cInfo.textContent = ''; return; }
   const { name, origW, origH } = compound.loaded;
   const { rows, cols } = GRID_DIMS[compound.grid];
-  dom.cInfo.textContent = `${truncate(name, 30)} · ${origW}×${origH} · ${cols}×${rows}`;
+  const n = compound.regions.length;
+  const margins = !compound.ignoreMargins ? ' · поля учитываются'
+    : compound.marginsFound ? ` · поля найдены: ${compound.marginsFound} из ${n}` : ' · полей не найдено';
+  dom.cInfo.textContent = `${truncate(name, 30)} · ${origW}×${origH} · ${cols}×${rows}${margins}`;
 }
 
 /* ---------- Reset ---------- */
@@ -812,6 +976,7 @@ function resetCompound() {
   compound.loaded = null;
   compound.sal = null;
   compound.regions = [];
+  compound.marginsFound = 0;
   dom.cDropzone.hidden = false;
   dom.cResults.hidden = true;
   dom.cFileInput.value = '';
@@ -848,10 +1013,12 @@ function exportCompoundCSV() {
   rows.push(['# Saliency compound · ' + new Date().toISOString()]);
   rows.push(['# file', compound.loaded.name, 'grid', compound.grid, 'method', settings.method]);
   rows.push(['# карта считается по всему изображению; регионы сравниваются на общей шкале']);
+  rows.push(['# ignore_margins', compound.ignoreMargins ? 1 : 0, 'margins_found', compound.marginsFound]);
   rows.push([]);
-  rows.push(['region', 'share_pct', ...METRIC_ORDER]);
+  rows.push(['region', 'share_pct', 'x0', 'y0', 'width', 'height', 'margins_trimmed', ...METRIC_ORDER]);
   for (const reg of regs) {
-    rows.push([reg.name, reg.share, ...METRIC_ORDER.map((k) => reg.metrics[k])]);
+    rows.push([reg.name, reg.share, reg.sx, reg.sy, reg.sw, reg.sh, reg.trimmed ? 1 : 0,
+      ...METRIC_ORDER.map((k) => reg.metrics[k])]);
   }
 
   rows.push([]);

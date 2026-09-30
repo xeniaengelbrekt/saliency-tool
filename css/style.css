@@ -2981,3 +2981,6 @@ input[type="range"]::-moz-range-thumb {
 .data-table tr.row-model td { color: var(--text-bright); }
 .data-table tr.row-summary td { border-top: 1px solid var(--border-hov); color: var(--green); }
 .data-table td.dim { color: var(--text-mute); }
+
+.compound-opt { font-size: 12px; color: var(--text-dim); }
+.compound-opt input { accent-color: var(--green); }
