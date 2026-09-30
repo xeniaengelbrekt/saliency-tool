@@ -341,6 +341,26 @@ test('FT сверяется с независимой реализацией (н
   near(got.rawMax, expected.rawMax, 0.05 * expected.rawMax / 100 + 0.2, 'rawMax (peak)');
 });
 
+test('SR: сжатие до 64×64 по площади — карта не зависит от кратного увеличения изображения', () => {
+  // исходная сцена 128×96 и она же, увеличенная в 2 раза повторением пикселей (256×192):
+  // после усреднения по площади до 64×64 получается один и тот же сигнал
+  const r = rng(77);
+  const small = makeImage(128, 96, (x, y) => { const v = 90 + 50 * Math.sin(x / 11) * Math.cos(y / 9) + r() * 25; return [v, v * 0.9, v * 1.1]; });
+  for (let y = 40; y < 56; y++) for (let x = 70; x < 92; x++) { const i = (y * 128 + x) * 4; small.data[i] = 230; small.data[i + 1] = 40; small.data[i + 2] = 40; }
+  const big = makeImage(256, 192, (x, y) => { const i = ((y >> 1) * 128 + (x >> 1)) * 4; return [small.data[i], small.data[i + 1], small.data[i + 2]]; });
+  const a = computeSaliency(small, 'sr'), b = computeSaliency(big, 'sr');
+  near(a.rawMax, b.rawMax, 1e-4 * a.rawMax, 'rawMax');
+  ok(pearsonR(a, b) > 0.99999, `корреляция ${pearsonR(a, b).toFixed(6)}`);
+});
+
+test('SR: нецелое отношение размеров (171 → 64) не ломает карту — нет NaN, пик на объекте', () => {
+  const img = sceneWithSquare(171, 256, 100, 40, 20);
+  const s = computeSaliency(img, 'sr');
+  finiteAll(s); eq(s.width, 171); eq(s.height, 256);
+  const k = argmax(s); const x = k % 171, y = Math.floor(k / 171);
+  ok(x > 60 && x < 140 && y > 10 && y < 100, `пик SR в (${x}, ${y})`);
+});
+
 test('Local Contrast: σ задаётся по длинной стороне (карта не зависит от поворота кадра)', () => {
   const a = computeSaliency(sceneWithSquare(96, 48, 70, 12, 8), 'local');
   // транспонированная сцена: квадрат в (12, 70) на 48×96
@@ -640,7 +660,7 @@ const REGRESSION = {
   ft:    { mean: 0.2427, peak: 75.23,    entropy: 4.73, center_bias: 1.46, spread_pct: 6.78,  peak_x: 73.75, peak_y: 38 },
   dog:   { mean: 0.1387, peak: 103.8,    entropy: 4.26, center_bias: 1.17, spread_pct: 3.78,  peak_x: 19.62, peak_y: 66.2 },
   local: { mean: 0.0561, peak: 0.3417,   entropy: 1.98, center_bias: 1.63, spread_pct: 4.13,  peak_x: 19.88, peak_y: 61.4 },
-  sr:    { mean: 0.2031, peak: 0.001345, entropy: 4.47, center_bias: 0.9,  spread_pct: 16.4,  peak_x: 18.38, peak_y: 64.2 },
+  sr:    { mean: 0.2225, peak: 0.001253, entropy: 5.01, center_bias: 0.73, spread_pct: 17.33, peak_x: 18.38, peak_y: 64.2 },
 };
 
 test('регрессия: эталонные метрики четырёх методов на фиксированной сцене', () => {

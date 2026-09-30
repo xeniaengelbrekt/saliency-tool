@@ -3937,8 +3937,8 @@ input[type="range"]::-moz-range-thumb {
        5. Реконструкция: inverse FFT( exp(R) · e^{iP} ).
        6. Карта = |reconstructed|².
        7. Гауссово размытие (σ = 8 для 64×64).
-       8. Билинейный апскейл до размера рабочей копии изображения
-          (пропорции сохранены), нормировка в [0, 1].
+       8. Билинейное увеличение (по центрам пикселей) до размера рабочей
+          копии изображения (пропорции сохранены), нормировка в [0, 1].
 
      Размер 64×64 фиксированный — степень двойки, нужен для radix-2 FFT.
      На малом размере SR обычно работает лучше, чем на большом, и это
@@ -3954,7 +3954,7 @@ input[type="range"]::-moz-range-thumb {
   function spectralResidualSaliency(imageData) {
     const { width: srcW, height: srcH } = imageData;
 
-    // Шаг 1: яркость + downsample 64×64 box-усреднением
+    // Шаг 1: яркость + сжатие до 64×64 усреднением по площади (вес пикселя = доля покрытия)
     const gray = rgbToGray(imageData);
     const small = downsample(gray, srcW, srcH, SR_SIZE, SR_SIZE);
 
@@ -3999,7 +3999,7 @@ input[type="range"]::-moz-range-thumb {
     const blurred = gaussBlur1D(sal, SR_SIZE, SR_SIZE, SR_LOG_SIGMA);
 
     // Шаг 9: апскейл до размера рабочей копии — чтобы карта совпадала с другими методами
-    const upscaled = upscaleBilinear(blurred, SR_SIZE, SR_SIZE, srcW, srcH);
+    const upscaled = resampleMap(blurred, SR_SIZE, SR_SIZE, srcW, srcH);   // билинейно, по центрам пикселей
 
     // Шаг 10: нормировка [0, 1]
     return normalize(upscaled);
@@ -4009,52 +4009,43 @@ input[type="range"]::-moz-range-thumb {
      Вспомогательные процедуры
      ============================================================ */
 
-  /** Box-усреднение при downsampling в произвольной кратности. */
-  function downsample(src, srcW, srcH, dstW, dstH) {
-    const out = new Float32Array(dstW * dstH);
-    const sx = srcW / dstW;
-    const sy = srcH / dstH;
-    for (let y = 0; y < dstH; y++) {
-      const y0 = Math.floor(y * sy);
-      const y1 = Math.max(y0 + 1, Math.floor((y + 1) * sy));
-      for (let x = 0; x < dstW; x++) {
-        const x0 = Math.floor(x * sx);
-        const x1 = Math.max(x0 + 1, Math.floor((x + 1) * sx));
-        let sum = 0, cnt = 0;
-        for (let yi = y0; yi < y1 && yi < srcH; yi++) {
-          for (let xi = x0; xi < x1 && xi < srcW; xi++) {
-            sum += src[yi * srcW + xi];
-            cnt++;
-          }
-        }
-        out[y * dstW + x] = cnt > 0 ? sum / cnt : 0;
+  /**
+   * Веса усреднения по площади для одной оси: для каждой ячейки результата —
+   * индексы исходных пикселей и доли их покрытия (сумма весов = 1). Работает при любом
+   * соотношении размеров, в том числе нецелом (например, 171 → 64).
+   */
+  function axisWeights(srcN, dstN) {
+    const s = srcN / dstN;
+    const out = [];
+    for (let d = 0; d < dstN; d++) {
+      const a = d * s, b = (d + 1) * s;
+      const idx = [], wt = [];
+      for (let i = Math.floor(a); i < Math.min(srcN, Math.ceil(b)); i++) {
+        const lo = Math.max(a, i), hi = Math.min(b, i + 1);
+        if (hi > lo) { idx.push(i); wt.push((hi - lo) / s); }
       }
+      out.push({ idx, wt });
     }
     return out;
   }
 
-  /** Билинейная интерполяция при upscaling. */
-  function upscaleBilinear(src, srcW, srcH, dstW, dstH) {
+  /** Усреднение по площади (эквивалент cv2.INTER_AREA): блоки с дробными границами. */
+  function downsample(src, srcW, srcH, dstW, dstH) {
+    const wx = axisWeights(srcW, dstW);
+    const wy = axisWeights(srcH, dstH);
     const out = new Float32Array(dstW * dstH);
-    const sx = dstW > 1 ? (srcW - 1) / (dstW - 1) : 0;
-    const sy = dstH > 1 ? (srcH - 1) / (dstH - 1) : 0;
     for (let y = 0; y < dstH; y++) {
-      const fy = y * sy;
-      const y0 = Math.floor(fy);
-      const y1 = y0 + 1 < srcH ? y0 + 1 : y0;
-      const dy = fy - y0;
+      const { idx: iy, wt: ty } = wy[y];
       for (let x = 0; x < dstW; x++) {
-        const fx = x * sx;
-        const x0 = Math.floor(fx);
-        const x1 = x0 + 1 < srcW ? x0 + 1 : x0;
-        const dx = fx - x0;
-        const v00 = src[y0 * srcW + x0];
-        const v01 = src[y0 * srcW + x1];
-        const v10 = src[y1 * srcW + x0];
-        const v11 = src[y1 * srcW + x1];
-        const v0 = v00 * (1 - dx) + v01 * dx;
-        const v1 = v10 * (1 - dx) + v11 * dx;
-        out[y * dstW + x] = v0 * (1 - dy) + v1 * dy;
+        const { idx: ix, wt: tx } = wx[x];
+        let acc = 0;
+        for (let j = 0; j < iy.length; j++) {
+          let row = 0;
+          const base = iy[j] * srcW;
+          for (let i = 0; i < ix.length; i++) row += src[base + ix[i]] * tx[i];
+          acc += row * ty[j];
+        }
+        out[y * dstW + x] = acc;
       }
     }
     return out;
