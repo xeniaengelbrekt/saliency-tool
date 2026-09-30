@@ -5337,7 +5337,10 @@ input[type="range"]::-moz-range-thumb {
    * сравнение идёт в относительных координатах кадра (0–100 % по осям).
    */
   function pearsonR(A, B) {
-    if (A.length !== B.length) {
+    // Одинаковое число пикселей не значит одинаковую форму: 256×144 и 144×256
+    // имеют одну длину, но это разные сетки — сравниваем по размерам, если они известны.
+    const sameShape = A.length === B.length && (!A.width || !B.width || (A.width === B.width && A.height === B.height));
+    if (!sameShape) {
       if (!A.width || !B.width) throw new Error('Длины массивов не совпадают');
       A = resampleMap(A, A.width, A.height, CORR_GRID, CORR_GRID);
       B = resampleMap(B, B.width, B.height, CORR_GRID, CORR_GRID);

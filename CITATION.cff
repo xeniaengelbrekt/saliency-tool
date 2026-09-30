@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "Если вы используете этот инструмент в публикации, пожалуйста, сошлитесь на него."
+title: "Saliency: браузерный модуль количественной оценки визуальной салиентности стимулов"
+type: software
+version: 1.1.2
+date-released: 2026-09-30
+license: MIT
+authors:
+  - family-names: "Скуратова"
+    given-names: "Ксения Андреевна"
+repository-code: "https://github.com/xeniaengelbrekt/saliency-tool"
+url: "https://xeniaengelbrekt.github.io/saliency-tool/"
+keywords:
+  - salience
+  - saliency
+  - eye tracking
+  - visual stimuli
+  - experimental psychology

@@ -1,0 +1,24 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Тесты
+        run: node tests/run-node.js
+
+      - name: Бандлы актуальны (salience.html и eyetracking.html собраны из текущих исходников)
+        run: |
+          python3 build.py
+          git diff --exit-code -- salience.html eyetracking.html

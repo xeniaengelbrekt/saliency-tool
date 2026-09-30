@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Автотесты · Салиентность</title>
+  <style>
+    body { font: 14px/1.5 ui-monospace, Consolas, monospace; background: #050a08; color: #d4ecd4; margin: 0; padding: 24px; }
+    h1 { font: 600 20px/1.3 system-ui, sans-serif; margin: 0 0 4px; }
+    #summary { margin: 8px 0 20px; font-size: 15px; }
+    .ok { color: #4ade80; } .bad { color: #ff6b6b; }
+    li { margin: 3px 0; list-style: none; } .err { color: #ff9b9b; margin-left: 22px; white-space: pre-wrap; }
+    .ms { color: #6a8a72; }
+  </style>
+</head>
+<body>
+  <h1>Автотесты вычислительного ядра</h1>
+  <div id="summary">Выполняются…</div>
+  <ul id="list"></ul>
+  <script type="module">
+    import { runAll } from './tests.js';
+    const list = document.getElementById('list');
+    const summary = document.getElementById('summary');
+    const res = await runAll((r) => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="${r.ok ? 'ok' : 'bad'}">${r.ok ? '✓' : '✗'}</span> ${r.name.replace(/</g, '&lt;')} <span class="ms">${r.ms} мс</span>`
+        + (r.ok ? '' : `<div class="err">${String(r.error).replace(/</g, '&lt;')}</div>`);
+      list.appendChild(li);
+    });
+    summary.innerHTML = res.failed
+      ? `<span class="bad">Не прошло: ${res.failed}</span> из ${res.results.length}`
+      : `<span class="ok">Все тесты прошли: ${res.passed} из ${res.results.length}</span>`;
+    window.__testResult = res;
+  </script>
+</body>
+</html>

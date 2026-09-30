@@ -1,0 +1,11 @@
+{
+  "name": "saliency-tool",
+  "version": "1.1.2",
+  "description": "Браузерный модуль количественной оценки визуальной салиентности стимулов",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node tests/run-node.js",
+    "build": "python build.py"
+  }
+}

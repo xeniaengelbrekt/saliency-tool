@@ -43,18 +43,21 @@
 
 ```
 saliency-tool/
-├── salience.html              ← основной single-file bundle (~260 КБ)
-├── eyetracking.html           ← айтрекинг-модуль single-file (~170 КБ)
+├── salience.html              ← основной single-file bundle (~300 КБ)
+├── eyetracking.html           ← айтрекинг-модуль single-file (~240 КБ)
 ├── index.html, fixations.html ← исходные HTML для разработки
 ├── css/style.css              ← стили
 ├── js/                        ← модульный исходный код
 │   ├── algorithms/            ← FT, DoG, Local, SR, FFT, gaussian blur, colour spaces
 │   ├── eyetracking/           ← CSV-парсер и метрики соответствия
 │   ├── modes/                 ← 3 режима основного модуля
+│   ├── stats.js               ← доверительные интервалы, ANOVA
 │   └── (общие модули)
+├── tests/                     ← автотесты вычислительного ядра
 ├── build.py                   ← сборка single-file бандлов
 ├── start.bat                  ← локальный сервер (для разработки)
-└── docs/                      ← документация, статьи, инструкции
+├── CITATION.cff, .zenodo.json ← метаданные для цитирования
+└── docs/                      ← методы и формулы, инструкция автора
 ```
 
 ---
@@ -77,6 +80,14 @@ py build.py
 Скрипт склеивает `js/` и `css/style.css` в два самодостаточных HTML-файла:
 `salience.html` и `eyetracking.html`. Требует Python 3, без сторонних библиотек.
 
+**Автотесты** (45 проверок вычислительного ядра: точные значения, независимые реализации
+алгоритмов, свойства симметрии, разбор CSV, регрессионные эталоны):
+
+- в браузере: `start.bat` → http://localhost:8765/tests/
+- в Node ≥ 18: `node tests/run-node.js`
+
+На GitHub тесты и актуальность собранных файлов проверяются автоматически при каждой загрузке.
+
 ---
 
 ## Изменения
@@ -89,13 +100,9 @@ FT, нормировка карт и рабочее разрешение — р�
 
 ## Документация
 
-- [`docs/instructions.md`](docs/instructions.md) — общая дорожная карта проекта
-- [`docs/article-psychology.md`](docs/article-psychology.md) — методический материал для психологического журнала
-- [`docs/article-physiology.md`](docs/article-physiology.md) — технический материал для физиологического журнала
-- [`docs/article-eyetracking-psychology.md`](docs/article-eyetracking-psychology.md) — методический материал по айтрекинг-модулю
-- [`docs/booklet.md`](docs/booklet.md) — двухстраничный буклет о проекте
-- [`docs/github-and-doi.md`](docs/github-and-doi.md) — инструкция по получению DOI через Zenodo
-- [`docs/github-pages-and-hosting.md`](docs/github-pages-and-hosting.md) — публикация в интернете
+- [`docs/methods.md`](docs/methods.md) — алгоритмы, формулы, метрики, допущения и ограничения
+- [`docs/instructions.md`](docs/instructions.md) — как вносить изменения, выпускать версии и получать DOI
+- [`CHANGELOG.md`](CHANGELOG.md) — список изменений
 
 ---
 
@@ -103,10 +110,14 @@ FT, нормировка карт и рабочее разрешение — р�
 
 При использовании инструмента в научной публикации сошлитесь на:
 
-> [Ваше ФИО]. Saliency: браузерный модуль количественной оценки визуальной
-> салиентности стимулов. Версия 1.0.0. Программное обеспечение
-> [Электронный ресурс]. Zenodo, 2026.
-> DOI: 10.5281/zenodo.[номер после получения]
+> Скуратова К. А. Saliency: браузерный модуль количественной оценки визуальной
+> салиентности стимулов. Версия 1.1.2. Программное обеспечение
+> [Электронный ресурс]. 2026.
+> https://github.com/xeniaengelbrekt/saliency-tool
+> *(DOI будет добавлен после публикации релиза на Zenodo)*
+
+Метаданные для менеджеров ссылок — в файле [`CITATION.cff`](CITATION.cff)
+(на GitHub: «Cite this repository»).
 
 
 ---
@@ -120,9 +131,7 @@ MIT. Свободное использование, модификация и р
 
 ## Автор
 
-[Ваше ФИО]
-[Институт / лаборатория]
-[E-mail для связи]
+Скуратова Ксения Андреевна
 
 Замечания, баг-репорты, предложения по расширению — открывайте issue
-в репозитории или пишите на почту.
+в репозитории.
