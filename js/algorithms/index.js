@@ -14,10 +14,18 @@ const METHODS = {
   sr:    spectralResidualSaliency,
 };
 
+/**
+ * Считает карту салиентности. Карта имеет размер рабочей копии
+ * изображения (длинная сторона 256 px, пропорции сохранены);
+ * размеры прикреплены к массиву как sal.width / sal.height.
+ */
 export function computeSaliency(imageData, method) {
   const fn = METHODS[method];
   if (!fn) throw new Error(`Неизвестный метод: ${method}`);
-  return fn(imageData);
+  const sal = fn(imageData);
+  sal.width = imageData.width;
+  sal.height = imageData.height;
+  return sal;
 }
 
 export const METHOD_LABELS = {

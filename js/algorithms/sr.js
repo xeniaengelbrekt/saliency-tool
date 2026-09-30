@@ -9,7 +9,8 @@
      5. Реконструкция: inverse FFT( exp(R) · e^{iP} ).
      6. Карта = |reconstructed|².
      7. Гауссово размытие (σ = 8 для 64×64).
-     8. Билинейный апскейл до 256×256, нормировка в [0, 1].
+     8. Билинейный апскейл до размера рабочей копии изображения
+        (пропорции сохранены), нормировка в [0, 1].
 
    Размер 64×64 фиксированный — степень двойки, нужен для radix-2 FFT.
    На малом размере SR обычно работает лучше, чем на большом, и это
@@ -22,7 +23,6 @@ import { fft2d } from './fft.js';
 import { normalize } from './util.js';
 
 const SR_SIZE = 64;        // FFT работает на 64×64
-const FINAL_SIZE = 256;    // Для согласованности с другими методами
 const SR_LOG_SIGMA = 8;    // σ финального гауссова размытия (на 64×64)
 const LOG_KERNEL = 3;      // окно усреднения лог-спектра (3×3 по оригиналу)
 const EPS = 1e-10;         // защита логарифма от нуля
@@ -74,8 +74,8 @@ export function spectralResidualSaliency(imageData) {
   // Шаг 8: финальное гауссово размытие
   const blurred = gaussBlur1D(sal, SR_SIZE, SR_SIZE, SR_LOG_SIGMA);
 
-  // Шаг 9: апскейл до 256×256, чтобы метрики и render были согласованы
-  const upscaled = upscaleBilinear(blurred, SR_SIZE, SR_SIZE, FINAL_SIZE, FINAL_SIZE);
+  // Шаг 9: апскейл до размера рабочей копии — чтобы карта совпадала с другими методами
+  const upscaled = upscaleBilinear(blurred, SR_SIZE, SR_SIZE, srcW, srcH);
 
   // Шаг 10: нормировка [0, 1]
   return normalize(upscaled);
@@ -112,8 +112,8 @@ function downsample(src, srcW, srcH, dstW, dstH) {
 /** Билинейная интерполяция при upscaling. */
 function upscaleBilinear(src, srcW, srcH, dstW, dstH) {
   const out = new Float32Array(dstW * dstH);
-  const sx = (srcW - 1) / (dstW - 1);
-  const sy = (srcH - 1) / (dstH - 1);
+  const sx = dstW > 1 ? (srcW - 1) / (dstW - 1) : 0;
+  const sy = dstH > 1 ? (srcH - 1) / (dstH - 1) : 0;
   for (let y = 0; y < dstH; y++) {
     const fy = y * sy;
     const y0 = Math.floor(fy);

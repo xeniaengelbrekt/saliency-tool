@@ -1,11 +1,11 @@
 /* ============================================================
    modes/compare.js — Режим 2: сравнение
    Подрежимы: 2a (несколько изображений) и 2b (составной стимул).
-   На этапе 4 реализован 2a; 2b подключается на этапе 5.
    ============================================================ */
 
-import { loadImageFile, loadImageFiles, cropToImageData, TARGET_SIZE } from '../loader.js';
+import { loadImageFile, loadImageFiles, cropToImageData } from '../loader.js';
 import { computeSaliency } from '../algorithms/index.js';
+import { cropMap } from '../algorithms/util.js';
 import { computeMetrics, METRIC_LABELS, pearsonR, formatMetric } from '../metrics.js';
 import { renderHeatmap, renderOverlay, canvasToBlob } from '../render.js';
 import { getSettings, onSettingsChange } from '../app.js';
@@ -173,7 +173,7 @@ async function computeAll(settings) {
     await new Promise((r) => setTimeout(r, 0));
     const it = multi.items[i];
     it.sal = computeSaliency(it.loaded.imageData, settings.method);
-    it.metrics = computeMetrics(it.sal, TARGET_SIZE, TARGET_SIZE);
+    it.metrics = computeMetrics(it.sal);
   }
   renderGrid();
   renderMatrix();
@@ -241,8 +241,8 @@ function renderGrid() {
     if (it.sal && multi.showHeat) {
       const canvas = renderOverlay(
         it.loaded.origImage, it.sal,
-        TARGET_SIZE, TARGET_SIZE,
-        TARGET_SIZE, TARGET_SIZE,
+        it.sal.width, it.sal.height,
+        it.sal.width, it.sal.height,
         settings.colormap, settings.alpha
       );
       thumb.appendChild(canvas);
@@ -306,6 +306,10 @@ function corrClass(r) {
   return 'cell-r-low';
 }
 
+function corrLabel(r) {
+  return r >= 0.9 ? 'высокое' : r >= 0.7 ? 'умеренное' : 'слабое';
+}
+
 function truncate(s, n) {
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
 }
@@ -365,10 +369,10 @@ async function downloadOne(id, kind) {
   let canvas;
   let suffix;
   if (kind === 'heat') {
-    canvas = renderHeatmap(it.sal, TARGET_SIZE, TARGET_SIZE, origW, origH, settings.colormap, settings.alpha);
+    canvas = renderHeatmap(it.sal, it.sal.width, it.sal.height, origW, origH, settings.colormap, settings.alpha);
     suffix = '_saliency.png';
   } else {
-    canvas = renderOverlay(origImage, it.sal, TARGET_SIZE, TARGET_SIZE, origW, origH, settings.colormap, settings.alpha);
+    canvas = renderOverlay(origImage, it.sal, it.sal.width, it.sal.height, origW, origH, settings.colormap, settings.alpha);
     suffix = '_overlay.png';
   }
   const blob = await canvasToBlob(canvas, 'image/png');
@@ -396,7 +400,7 @@ async function exportZip() {
     const { origImage, origW, origH, name } = it.loaded;
     const canvas = renderOverlay(
       origImage, it.sal,
-      TARGET_SIZE, TARGET_SIZE,
+      it.sal.width, it.sal.height,
       origW, origH,
       settings.colormap, settings.alpha
     );
@@ -459,7 +463,8 @@ function exportCSV() {
 const compound = {
   loaded: null,        // { imageData, origImage, origW, origH, name, file }
   grid: '2x2',        // '2x1' | '1x2' | '2x2'
-  regions: [],        // [{ name, row, col, sx, sy, sw, sh, imageData, sal, metrics }]
+  sal: null,           // карта салиентности ВСЕГО составного изображения
+  regions: [],        // [{ name, row, col, sx, sy, sw, sh, thumb, sal, metrics, share }]
   showHeat: true,
   busy: false,
 };
@@ -503,8 +508,9 @@ function bindCompound() {
       if (g === compound.grid) return;
       dom.cGridToggle.forEach((b) => b.classList.toggle('active', b === btn));
       compound.grid = g;
-      if (compound.loaded) {
-        splitAndCompute();
+      if (compound.sal) {
+        splitRegions();
+        renderCompoundAll();
       }
     });
   });
@@ -533,7 +539,7 @@ async function handleCompoundFile(file) {
   try {
     compound.loaded = await loadImageFile(file);
     showCompoundResults();
-    await splitAndCompute();
+    await computeCompound();
   } catch (err) {
     console.error(err);
     toastError(err.message || String(err));
@@ -542,76 +548,82 @@ async function handleCompoundFile(file) {
   }
 }
 
-async function splitAndCompute() {
+/**
+ * Карта салиентности считается ОДИН раз по всему составному изображению.
+ * Регионы вырезаются из общей карты без перенормировки — поэтому их
+ * метрики лежат на одной шкале и показывают, какой подстимул заметнее
+ * в контексте остальных. (Если нормировать каждый регион в [0, 1]
+ * отдельно, все регионы по построению выглядят одинаково «яркими».)
+ */
+async function computeCompound() {
   if (!compound.loaded) return;
+  setCompoundBusy(true, 'Вычисляем салиентность…');
+  await new Promise((r) => setTimeout(r, 0));
+  compound.sal = computeSaliency(compound.loaded.imageData, getSettings().method);
+  splitRegions();
+  renderCompoundAll();
+  setCompoundBusy(false);
+}
+
+function splitRegions() {
   const { rows, cols } = GRID_DIMS[compound.grid];
   const { origImage, origW, origH } = compound.loaded;
-  const rw = origW / cols;
-  const rh = origH / rows;
+  const sal = compound.sal;
+  const gw = sal.width, gh = sal.height;
 
-  // Создаём регионы (без вычислений ещё) — без пропусков и перекрытий пикселей
+  // Сумма салиентности по всей карте — для доли каждого региона
+  let total = 0;
+  for (let i = 0; i < sal.length; i++) total += sal[i];
+
   compound.regions = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const sx = Math.round(c * rw);
-      const sy = Math.round(r * rh);
-      const sxNext = (c === cols - 1) ? origW : Math.round((c + 1) * rw);
-      const syNext = (r === rows - 1) ? origH : Math.round((r + 1) * rh);
-      const sw = sxNext - sx;
-      const sh = syNext - sy;
-      const { imageData, thumb } = cropToImageData(origImage, sx, sy, sw, sh);
+      // Границы в пикселях оригинала — без пропусков и перекрытий
+      const sx = Math.round(c * origW / cols);
+      const sy = Math.round(r * origH / rows);
+      const sw = (c === cols - 1 ? origW : Math.round((c + 1) * origW / cols)) - sx;
+      const sh = (r === rows - 1 ? origH : Math.round((r + 1) * origH / rows)) - sy;
+      // Те же границы на сетке карты
+      const gx0 = Math.round(c * gw / cols);
+      const gy0 = Math.round(r * gh / rows);
+      const gx1 = c === cols - 1 ? gw : Math.round((c + 1) * gw / cols);
+      const gy1 = r === rows - 1 ? gh : Math.round((r + 1) * gh / rows);
+
+      const regSal = cropMap(sal, gw, gx0, gy0, gx1, gy1);
+      let regSum = 0;
+      for (let i = 0; i < regSal.length; i++) regSum += regSal[i];
+
+      const { thumb } = cropToImageData(origImage, sx, sy, sw, sh);
       compound.regions.push({
         name: `R${r + 1}C${c + 1}`,
         row: r,
         col: c,
         sx, sy, sw, sh,
-        imageData,
         thumb,
-        sal: null,
-        metrics: null,
+        sal: regSal,
+        metrics: computeMetrics(regSal),
+        share: total > 0 ? +(regSum / total * 100).toFixed(2) : 0,
       });
     }
   }
+}
 
-  // Вычисляем салиентность каждого региона
-  const settings = getSettings();
-  const total = compound.regions.length;
-  for (let i = 0; i < total; i++) {
-    setCompoundBusy(true, 'Вычисляем салиентность…', `${i + 1} / ${total}`);
-    await new Promise((r) => setTimeout(r, 0));
-    const reg = compound.regions[i];
-    reg.sal = computeSaliency(reg.imageData, settings.method);
-    reg.metrics = computeMetrics(reg.sal, TARGET_SIZE, TARGET_SIZE);
-  }
-
+function renderCompoundAll() {
   renderCompoundPreview();
   renderCompoundGrid();
   renderCompoundPairs();
   renderCompoundInfo();
-  setCompoundBusy(false);
 }
 
 async function recomputeCompound() {
-  if (!compound.regions.length) return;
-  const settings = getSettings();
-  const total = compound.regions.length;
-  for (let i = 0; i < total; i++) {
-    setCompoundBusy(true, 'Пересчёт…', `${i + 1} / ${total}`);
-    await new Promise((r) => setTimeout(r, 0));
-    const reg = compound.regions[i];
-    reg.sal = computeSaliency(reg.imageData, settings.method);
-    reg.metrics = computeMetrics(reg.sal, TARGET_SIZE, TARGET_SIZE);
-  }
-  renderCompoundPreview();
-  renderCompoundGrid();
-  renderCompoundPairs();
-  setCompoundBusy(false);
+  if (!compound.loaded) return;
+  await computeCompound();
 }
 
 /* ---------- Render: composite preview ---------- */
 
 function renderCompoundPreview() {
-  if (!compound.loaded || !compound.regions.length) return;
+  if (!compound.loaded || !compound.sal) return;
   const { origImage, origW, origH } = compound.loaded;
   const settings = getSettings();
   const maxW = 720;
@@ -619,28 +631,22 @@ function renderCompoundPreview() {
   const dispW = Math.round(origW * ratio);
   const dispH = Math.round(origH * ratio);
 
-  const canvas = document.createElement('canvas');
-  canvas.width = dispW;
-  canvas.height = dispH;
-  const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(origImage, 0, 0, dispW, dispH);
-
-  const { rows, cols } = GRID_DIMS[compound.grid];
+  let canvas;
   if (compound.showHeat) {
-    for (const reg of compound.regions) {
-      if (!reg.sal) continue;
-      const rwDisp = dispW / cols;
-      const rhDisp = dispH / rows;
-      const x = reg.col * rwDisp;
-      const y = reg.row * rhDisp;
-      const heat = renderHeatmap(reg.sal, TARGET_SIZE, TARGET_SIZE, Math.round(rwDisp), Math.round(rhDisp), settings.colormap, settings.alpha);
-      ctx.drawImage(heat, x, y);
-    }
+    canvas = renderOverlay(origImage, compound.sal, compound.sal.width, compound.sal.height, dispW, dispH, settings.colormap, settings.alpha);
+  } else {
+    canvas = document.createElement('canvas');
+    canvas.width = dispW;
+    canvas.height = dispH;
+    const c = canvas.getContext('2d');
+    c.imageSmoothingEnabled = true;
+    c.imageSmoothingQuality = 'high';
+    c.drawImage(origImage, 0, 0, dispW, dispH);
   }
+  const ctx = canvas.getContext('2d');
 
   // Пунктирная сетка поверх для наглядности
+  const { rows, cols } = GRID_DIMS[compound.grid];
   ctx.strokeStyle = 'rgba(74, 222, 128, 0.55)';
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 4]);
@@ -659,7 +665,7 @@ function renderCompoundPreview() {
     ctx.stroke();
   }
 
-  // Подписи регионов
+  // Подписи регионов с долей салиентности
   ctx.setLineDash([]);
   ctx.font = '11px JetBrains Mono, monospace';
   ctx.fillStyle = 'rgba(74, 222, 128, 0.95)';
@@ -668,8 +674,9 @@ function renderCompoundPreview() {
   for (const reg of compound.regions) {
     const x = reg.col * (dispW / cols) + 8;
     const y = reg.row * (dispH / rows) + 16;
-    ctx.strokeText(reg.name, x, y);
-    ctx.fillText(reg.name, x, y);
+    const label = `${reg.name} · ${reg.share}%`;
+    ctx.strokeText(label, x, y);
+    ctx.fillText(label, x, y);
   }
 
   dom.cPreview.innerHTML = '';
@@ -695,6 +702,7 @@ function renderCompoundGrid() {
         <div class="result-name">${reg.name} · ${reg.sw}×${reg.sh}px</div>
         <div class="result-stats">
           ${reg.metrics ? `
+            <span class="result-stat" title="Доля всей салиентности изображения, приходящаяся на регион">доля <strong>${reg.share}%</strong></span>
             <span class="result-stat">μ <strong>${formatMetric('mean', reg.metrics.mean)}</strong></span>
             <span class="result-stat">peak <strong>${formatMetric('peak', reg.metrics.peak)}</strong></span>
             <span class="result-stat">H <strong>${formatMetric('entropy', reg.metrics.entropy)}</strong></span>
@@ -711,13 +719,15 @@ function renderCompoundGrid() {
     thumb.appendChild(tag);
 
     if (reg.sal && compound.showHeat) {
-      // Создаём маленький холст с регионом + оверлеем
+      const w = reg.sal.width, h = reg.sal.height;
       const previewCanvas = document.createElement('canvas');
-      previewCanvas.width = TARGET_SIZE;
-      previewCanvas.height = TARGET_SIZE;
+      previewCanvas.width = w;
+      previewCanvas.height = h;
       const pctx = previewCanvas.getContext('2d');
-      pctx.putImageData(reg.imageData, 0, 0);
-      const heat = renderHeatmap(reg.sal, TARGET_SIZE, TARGET_SIZE, TARGET_SIZE, TARGET_SIZE, settings.colormap, settings.alpha);
+      pctx.imageSmoothingEnabled = true;
+      pctx.imageSmoothingQuality = 'high';
+      pctx.drawImage(compound.loaded.origImage, reg.sx, reg.sy, reg.sw, reg.sh, 0, 0, w, h);
+      const heat = renderHeatmap(reg.sal, w, h, w, h, settings.colormap, settings.alpha);
       pctx.drawImage(heat, 0, 0);
       thumb.appendChild(previewCanvas);
     } else {
@@ -732,9 +742,28 @@ function renderCompoundGrid() {
 
 /* ---------- Render: pairs table ---------- */
 
-function renderCompoundPairs() {
+function pairRows() {
   const regs = compound.regions.filter((r) => r.sal && r.metrics);
-  if (regs.length < 2) {
+  const out = [];
+  for (let i = 0; i < regs.length; i++) {
+    for (let j = i + 1; j < regs.length; j++) {
+      const a = regs[i], b = regs[j];
+      out.push({
+        a, b,
+        r: pearsonR(a.sal, b.sal),
+        dShare: Math.abs(a.share - b.share),
+        dMean: Math.abs(a.metrics.mean - b.metrics.mean),
+        dEnt: Math.abs(a.metrics.entropy - b.metrics.entropy),
+        dPk: Math.abs(a.metrics.peak - b.metrics.peak),
+      });
+    }
+  }
+  return out;
+}
+
+function renderCompoundPairs() {
+  const pairs = pairRows();
+  if (!pairs.length) {
     dom.cPairs.innerHTML = '';
     return;
   }
@@ -743,35 +772,28 @@ function renderCompoundPairs() {
     <thead>
       <tr>
         <th>Пара</th>
-        <th>r (Pearson)</th>
+        <th title="Разница долей общей салиентности, процентные пункты">Δ доля, п.п.</th>
         <th>Δ mean</th>
         <th>Δ entropy</th>
         <th>Δ peak</th>
-        <th>Сходство</th>
+        <th title="Сходство пространственного рисунка карт (в относительных координатах региона)">r (Pearson)</th>
+        <th>Сходство рисунка</th>
       </tr>
     </thead>
     <tbody>
   `;
-  for (let i = 0; i < regs.length; i++) {
-    for (let j = i + 1; j < regs.length; j++) {
-      const a = regs[i], b = regs[j];
-      const r = pearsonR(a.sal, b.sal);
-      const dMean = Math.abs(a.metrics.mean - b.metrics.mean);
-      const dEnt  = Math.abs(a.metrics.entropy - b.metrics.entropy);
-      const dPk   = Math.abs(a.metrics.peak - b.metrics.peak);
-      const cls = corrClass(r);
-      const label = r >= 0.9 ? 'высокое' : r >= 0.7 ? 'умеренное' : 'слабое';
-      html += `
-        <tr>
-          <td><strong>${a.name} × ${b.name}</strong></td>
-          <td class="num green">${r.toFixed(3)}</td>
-          <td class="num">${formatMetric('mean', +dMean.toFixed(4))}</td>
-          <td class="num">${formatMetric('entropy', +dEnt.toFixed(2))}</td>
-          <td class="num">${formatMetric('peak', dPk)}</td>
-          <td><span class="corr-key ${cls}"></span> ${label}</td>
-        </tr>
-      `;
-    }
+  for (const p of pairs) {
+    html += `
+      <tr>
+        <td><strong>${p.a.name} × ${p.b.name}</strong></td>
+        <td class="num green">${p.dShare.toFixed(2)}</td>
+        <td class="num">${formatMetric('mean', +p.dMean.toFixed(4))}</td>
+        <td class="num">${formatMetric('entropy', +p.dEnt.toFixed(2))}</td>
+        <td class="num">${formatMetric('peak', +p.dPk.toPrecision(4))}</td>
+        <td class="num">${p.r.toFixed(3)}</td>
+        <td><span class="corr-key ${corrClass(p.r)}"></span> ${corrLabel(p.r)}</td>
+      </tr>
+    `;
   }
   html += '</tbody>';
   dom.cPairs.innerHTML = html;
@@ -788,6 +810,7 @@ function renderCompoundInfo() {
 
 function resetCompound() {
   compound.loaded = null;
+  compound.sal = null;
   compound.regions = [];
   dom.cDropzone.hidden = false;
   dom.cResults.hidden = true;
@@ -824,23 +847,24 @@ function exportCompoundCSV() {
   const rows = [];
   rows.push(['# Saliency compound · ' + new Date().toISOString()]);
   rows.push(['# file', compound.loaded.name, 'grid', compound.grid, 'method', settings.method]);
+  rows.push(['# карта считается по всему изображению; регионы сравниваются на общей шкале']);
   rows.push([]);
-  rows.push(['region', ...METRIC_ORDER]);
+  rows.push(['region', 'share_pct', ...METRIC_ORDER]);
   for (const reg of regs) {
-    rows.push([reg.name, ...METRIC_ORDER.map((k) => reg.metrics[k])]);
+    rows.push([reg.name, reg.share, ...METRIC_ORDER.map((k) => reg.metrics[k])]);
   }
 
   rows.push([]);
-  rows.push(['Попарное сравнение', 'r_pearson', 'delta_mean', 'delta_entropy', 'delta_peak']);
-  for (let i = 0; i < regs.length; i++) {
-    for (let j = i + 1; j < regs.length; j++) {
-      const a = regs[i], b = regs[j];
-      const r = +pearsonR(a.sal, b.sal).toFixed(4);
-      const dMean = +(Math.abs(a.metrics.mean - b.metrics.mean)).toFixed(4);
-      const dEnt  = +(Math.abs(a.metrics.entropy - b.metrics.entropy)).toFixed(2);
-      const dPk   = +(Math.abs(a.metrics.peak - b.metrics.peak)).toFixed(4);
-      rows.push([`${a.name} × ${b.name}`, r, dMean, dEnt, dPk]);
-    }
+  rows.push(['Попарное сравнение', 'delta_share_pp', 'delta_mean', 'delta_entropy', 'delta_peak', 'r_pearson']);
+  for (const p of pairRows()) {
+    rows.push([
+      `${p.a.name} × ${p.b.name}`,
+      +p.dShare.toFixed(2),
+      +p.dMean.toFixed(4),
+      +p.dEnt.toFixed(2),
+      +p.dPk.toPrecision(4),
+      +p.r.toFixed(4),
+    ]);
   }
 
   downloadCSV(rows, 'saliency_compound.csv');
@@ -859,7 +883,7 @@ async function exportCompoundZip() {
     const reg = regs[i];
     const canvas = renderHeatmap(
       reg.sal,
-      TARGET_SIZE, TARGET_SIZE,
+      reg.sal.width, reg.sal.height,
       reg.sw, reg.sh,
       settings.colormap, settings.alpha
     );
@@ -868,8 +892,7 @@ async function exportCompoundZip() {
     setCompoundBusy(true, 'Генерируем PNG регионов…', `${i + 1} / ${regs.length}`);
     await new Promise((r) => setTimeout(r, 0));
   }
-  // Добавим composite map в архив
-  const composite = await buildCompositeCanvas(settings);
+  const composite = buildCompositeCanvas(settings);
   if (composite) {
     const blob = await canvasToBlob(composite, 'image/png');
     if (blob) entries.push({ name: 'saliency_composite.png', blob });
@@ -883,11 +906,8 @@ async function exportCompoundZip() {
 /* ---------- Export: composite PNG ---------- */
 
 async function exportCompositeMap() {
-  if (!compound.regions.length) return;
-  setCompoundBusy(true, 'Собираем составную карту…');
-  const settings = getSettings();
-  const canvas = await buildCompositeCanvas(settings);
-  setCompoundBusy(false);
+  if (!compound.sal) return;
+  const canvas = buildCompositeCanvas(getSettings());
   if (!canvas) return;
   const blob = await canvasToBlob(canvas, 'image/png');
   if (blob) {
@@ -903,20 +923,10 @@ async function exportCompositeMap() {
   }
 }
 
-async function buildCompositeCanvas(settings) {
-  if (!compound.loaded || !compound.regions.length) return null;
+function buildCompositeCanvas(settings) {
+  if (!compound.loaded || !compound.sal) return null;
   const { origW, origH } = compound.loaded;
-  const canvas = document.createElement('canvas');
-  canvas.width = origW;
-  canvas.height = origH;
-  const ctx = canvas.getContext('2d');
-
-  for (const reg of compound.regions) {
-    if (!reg.sal) continue;
-    const heat = renderHeatmap(reg.sal, TARGET_SIZE, TARGET_SIZE, reg.sw, reg.sh, settings.colormap, 1.0);
-    ctx.drawImage(heat, reg.sx, reg.sy);
-  }
-  return canvas;
+  return renderHeatmap(compound.sal, compound.sal.width, compound.sal.height, origW, origH, settings.colormap, 1.0);
 }
 
 /* ============================================================
@@ -927,10 +937,10 @@ async function handleSettingsChange(_settings, changed) {
   // Если поменялся только colormap/alpha — пересчитывать sal не нужно, только перерисовать
   if (changed.method) {
     if (multi.items.length) await recomputeAll();
-    if (compound.regions.length) await recomputeCompound();
+    if (compound.loaded) await recomputeCompound();
   } else if (changed.colormap || changed.alpha) {
     if (multi.items.length) renderGrid();
-    if (compound.regions.length) {
+    if (compound.sal) {
       renderCompoundPreview();
       renderCompoundGrid();
     }

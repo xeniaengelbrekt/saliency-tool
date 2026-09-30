@@ -2905,6 +2905,93 @@ input[type="range"]::-moz-range-thumb {
   .info-bar { flex-direction: column; align-items: flex-start; }
 }
 
+
+/* ============================================================
+   Режим 3: параметры подбора и блок ANOVA
+   ============================================================ */
+
+.match-options {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.match-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.match-opt input[type="number"] {
+  width: 64px;
+  padding: 4px 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-bright);
+  font-family: var(--font-mono);
+}
+.match-opt input[type="checkbox"] { accent-color: var(--green); }
+.match-opt-title { color: var(--text-mute); }
+.match-opt-sep { width: 1px; height: 18px; background: var(--border); }
+.match-stats { margin-top: 24px; margin-bottom: 16px; }
+
+
+/* ============================================================
+   Айтрекинг: столбцы CSV, положение стимула, ориентиры, пакет
+   ============================================================ */
+
+.param-details summary { cursor: pointer; list-style: revert; }
+.param-summary { text-transform: none; letter-spacing: 0.2px; color: var(--text-mute); margin-left: 8px; }
+.col-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px 16px;
+  margin-top: 10px;
+}
+.col-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+.col-grid select, .select-inline select {
+  background: var(--bg-input);
+  color: var(--text-bright);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  max-width: 100%;
+}
+.select-inline { display: inline-block; }
+.frame-group { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.frame-group[hidden] { display: none; }
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  cursor: pointer;
+}
+.check-row input { margin-top: 3px; accent-color: var(--green); }
+.bench-note, .batch-desc {
+  font-size: 12px;
+  color: var(--text-mute);
+  line-height: 1.55;
+  margin: 8px 0 20px;
+}
+.batch-panel { margin-top: 28px; }
+.pp-wrap { max-height: 360px; }
+.data-table tr.row-model td { color: var(--text-bright); }
+.data-table tr.row-summary td { border-top: 1px solid var(--border-hov); color: var(--green); }
+.data-table td.dim { color: var(--text-mute); }
+
 </style>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
 </head>
@@ -2935,8 +3022,9 @@ input[type="range"]::-moz-range-thumb {
       <p class="panel-desc">
         Загрузите стимул и CSV с координатами фиксаций. Модуль построит карту салиентности
         выбранным методом (FT, DoG, Local Contrast, Spectral Residual) и тепловую карту
-        ваших айтрекерных данных через KDE, после чего рассчитает три стандартные метрики
-        соответствия: Pearson r, NSS и AUC-Judd.
+        ваших айтрекерных данных через KDE, после чего рассчитает стандартные метрики
+        соответствия (CC, NSS, AUC-Judd, shuffled AUC, SIM, KL) и сравнит модель с центральным
+        baseline и с согласованностью самих участников. Можно посчитать сразу все стимулы файла.
       </p>
     </header>
 
@@ -2996,7 +3084,7 @@ input[type="range"]::-moz-range-thumb {
           <input type="range" id="param-sigma" min="5" max="100" value="30">
         </div>
         <div class="setting">
-          <label for="param-stim-filter">Стимул</label>
+          <label for="param-stim-filter">Стимул в CSV</label>
           <div class="select-wrap">
             <select id="param-stim-filter">
               <option value="">— нет данных —</option>
@@ -3005,23 +3093,49 @@ input[type="range"]::-moz-range-thumb {
         </div>
       </div>
 
+      <details class="frame-row param-details" id="col-block">
+        <summary class="frame-row-label">Столбцы CSV · распознаны автоматически, проверьте
+          <span class="param-summary" id="col-summary"></span></summary>
+        <div class="col-grid" id="col-grid"></div>
+      </details>
+
       <div class="frame-row">
-        <div class="frame-row-label">Размер кадра, в котором регистрировались координаты</div>
+        <div class="frame-row-label">Где находился стимул в координатах айтрекера</div>
         <div class="frame-row-fields">
-          <label class="frame-field">
-            <span>W, px</span>
-            <input type="number" id="frame-w" min="1" step="1">
-          </label>
-          <span class="frame-x">×</span>
-          <label class="frame-field">
-            <span>H, px</span>
-            <input type="number" id="frame-h" min="1" step="1">
-          </label>
-          <button class="btn btn-ghost btn-small" id="frame-reset" type="button" title="Использовать размер изображения">
-            ↺ из изображения
-          </button>
-          <span class="frame-hint" id="frame-hint"></span>
+          <div class="select-wrap select-inline">
+            <select id="frame-mode">
+              <option value="image">Координаты уже в пикселях изображения</option>
+              <option value="center">Стимул по центру экрана, в исходном размере</option>
+              <option value="fit">Стимул растянут на экран с сохранением пропорций</option>
+              <option value="manual">Прямоугольник стимула задан вручную</option>
+            </select>
+          </div>
+          <span class="frame-group" data-modes="center fit norm">
+            <label class="frame-field"><span>экран W</span><input type="number" id="screen-w" min="1" step="1"></label>
+            <span class="frame-x">×</span>
+            <label class="frame-field"><span>H</span><input type="number" id="screen-h" min="1" step="1"></label>
+          </span>
+          <span class="frame-group" data-modes="manual">
+            <label class="frame-field"><span>left</span><input type="number" id="rect-x" step="1"></label>
+            <label class="frame-field"><span>top</span><input type="number" id="rect-y" step="1"></label>
+            <label class="frame-field"><span>width</span><input type="number" id="rect-w" min="1" step="1"></label>
+            <label class="frame-field"><span>height</span><input type="number" id="rect-h" min="1" step="1"></label>
+          </span>
         </div>
+        <label class="check-row">
+          <input type="checkbox" id="coords-norm">
+          Координаты в долях (0–1), например GazePoint FPOGX / FPOGY — умножаются на размер экрана
+          (в режиме «пиксели изображения» — на размер изображения)
+        </label>
+        <span class="frame-hint" id="frame-hint"></span>
+      </div>
+
+      <div class="frame-row">
+        <label class="check-row">
+          <input type="checkbox" id="opt-duration">
+          Взвешивать фиксации по длительности (карта KDE и NSS). По умолчанию выключено —
+          как в стандартных бенчмарках; AUC и sAUC всегда считаются без весов.
+        </label>
       </div>
 
       <div class="run-row">
@@ -3043,6 +3157,19 @@ input[type="range"]::-moz-range-thumb {
       </h3>
       <div class="metrics-grid" id="eval-metrics"></div>
 
+      <h3 class="section-title">Модель на фоне ориентиров
+        <span class="section-sub">центральный baseline — нижняя планка, согласованность участников — верхняя</span>
+      </h3>
+      <div class="data-table-wrap"><table class="data-table" id="bench-table"></table></div>
+      <p class="bench-note" id="bench-note"></p>
+
+      <div id="pp-block" hidden>
+        <h3 class="section-title">По участникам
+          <span class="section-sub">участник — единица наблюдения; среднее и 95 % доверительный интервал</span>
+        </h3>
+        <div class="data-table-wrap pp-wrap"><table class="data-table" id="pp-table"></table></div>
+      </div>
+
       <h3 class="section-title">Карты
         <span class="section-sub">наложение поверх стимула</span>
       </h3>
@@ -3052,6 +3179,32 @@ input[type="range"]::-moz-range-thumb {
         <span class="toolbar-spacer"></span>
         <button class="btn" id="dl-csv" type="button">↓ CSV отчёт</button>
         <button class="btn btn-primary" id="dl-zip" type="button">↓ ZIP всех карт</button>
+      </div>
+    </section>
+
+    <!-- ==================== ПАКЕТНЫЙ РАСЧЁТ ==================== -->
+    <section class="settings-panel batch-panel" id="batch" hidden>
+      <div class="frame-row">
+        <div class="frame-row-label">Пакетный расчёт по всем стимулам из CSV</div>
+        <p class="batch-desc">
+          Загрузите изображения всех стимулов — они сопоставятся с колонкой «Стимул» по имени
+          файла (без пути и расширения). Для каждого стимула будут посчитаны те же метрики
+          с текущими параметрами; sAUC использует фиксации на остальных стимулах как негативы.
+        </p>
+        <div class="frame-row-fields">
+          <input type="file" id="batch-files" multiple accept="image/jpeg,image/png,image/webp,image/bmp" hidden>
+          <button class="btn" id="batch-pick" type="button">+ Изображения стимулов</button>
+          <span class="toolbar-info" id="batch-info"></span>
+          <span class="toolbar-spacer"></span>
+          <button class="btn btn-primary" id="batch-run" type="button" disabled>Рассчитать для всех</button>
+        </div>
+      </div>
+      <div class="frame-row" id="batch-results" hidden>
+        <div class="data-table-wrap"><table class="data-table" id="batch-table"></table></div>
+        <div class="frame-row-fields">
+          <span class="toolbar-spacer"></span>
+          <button class="btn" id="batch-dl" type="button">↓ CSV пакета</button>
+        </div>
       </div>
     </section>
 
@@ -3070,36 +3223,289 @@ input[type="range"]::-moz-range-thumb {
      util.js — общие утилиты для всех алгоритмов салиентности
      ============================================================ */
 
+  /** Верхний перцентиль для робастной нормировки (см. normalize). */
+  const NORM_PERCENTILE = 0.999;
+
   /**
    * Нормировать массив в [0, 1]. Возвращает новый Float32Array.
    *
-   * Дополнительно прикрепляет к возвращаемому массиву свойства
-   * `rawMin` и `rawMax` — минимум и максимум ДО нормализации.
-   * Это нужно метрике `peak`: после нормализации max(S) всегда = 1.0,
-   * поэтому информативная пиковая салиентность — это max сырой карты.
+   * Нормировка робастная: нижняя граница — минимум, верхняя — 99.9-й
+   * перцентиль (значения выше обрезаются до 1). Классическая min–max
+   * нормировка делает все метрики заложниками одного-единственного
+   * пикселя-выброса: он «сжимает» остальную карту к нулю, и mean /
+   * spread / entropy падают без всякой связи со стимулом.
+   *
+   * К массиву прикрепляются свойства:
+   *   rawMin — минимум ДО нормировки;
+   *   rawMax — истинный максимум ДО нормировки (для метрики peak);
+   *   rawHi  — значение, принятое за 1.0 (99.9-й перцентиль).
    */
   function normalize(map) {
     const N = map.length;
-    let min = Infinity, max = -Infinity;
+    let min = Infinity, max = -Infinity, maxIdx = 0;
     for (let i = 0; i < N; i++) {
       const v = map[i];
       if (v < min) min = v;
-      if (v > max) max = v;
+      if (v > max) { max = v; maxIdx = i; }
+    }
+    let hi = max;
+    if (N >= 1000) {
+      const sorted = Float32Array.from(map).sort();
+      hi = sorted[Math.min(N - 1, Math.floor(NORM_PERCENTILE * (N - 1)))];
+      if (!(hi > min)) hi = max;   // карта почти плоская — откат к min–max
     }
     const out = new Float32Array(N);
-    const range = max - min;
-    if (range !== 0) {
+    const range = hi - min;
+    if (range > 0) {
       for (let i = 0; i < N; i++) {
-        out[i] = (map[i] - min) / range;
+        const v = (map[i] - min) / range;
+        out[i] = v > 1 ? 1 : v;
       }
     }
-    // Сохраняем сырой диапазон как свойства массива
     out.rawMin = min;
     out.rawMax = max;
+    out.rawMaxIdx = maxIdx;
+    out.rawHi = hi;
     return out;
+  }
+
+  /** Прикрепить к карте её размеры (карта = плоский массив w*h). */
+  function withSize(map, width, height) {
+    map.width = width;
+    map.height = height;
+    return map;
+  }
+
+  /**
+   * Билинейный ресэмплинг карты srcW×srcH → dstW×dstH.
+   * Координаты берутся по центрам пикселей (как у canvas).
+   */
+  function resampleMap(src, srcW, srcH, dstW, dstH) {
+    const out = new Float32Array(dstW * dstH);
+    const sx = srcW / dstW;
+    const sy = srcH / dstH;
+    for (let y = 0; y < dstH; y++) {
+      let fy = (y + 0.5) * sy - 0.5;
+      if (fy < 0) fy = 0;
+      if (fy > srcH - 1) fy = srcH - 1;
+      const y0 = Math.floor(fy);
+      const y1 = y0 + 1 < srcH ? y0 + 1 : y0;
+      const dy = fy - y0;
+      for (let x = 0; x < dstW; x++) {
+        let fx = (x + 0.5) * sx - 0.5;
+        if (fx < 0) fx = 0;
+        if (fx > srcW - 1) fx = srcW - 1;
+        const x0 = Math.floor(fx);
+        const x1 = x0 + 1 < srcW ? x0 + 1 : x0;
+        const dx = fx - x0;
+        const v0 = src[y0 * srcW + x0] * (1 - dx) + src[y0 * srcW + x1] * dx;
+        const v1 = src[y1 * srcW + x0] * (1 - dx) + src[y1 * srcW + x1] * dx;
+        out[y * dstW + x] = v0 * (1 - dy) + v1 * dy;
+      }
+    }
+    return withSize(out, dstW, dstH);
+  }
+
+  /**
+   * Вырезать прямоугольник [x0, x1) × [y0, y1) из карты width×height.
+   * Значения НЕ перенормируются — регион остаётся в шкале исходной карты.
+   * rawMin/rawMax пересчитываются в сырой шкале исходной карты.
+   */
+  function cropMap(map, width, x0, y0, x1, y1) {
+    const w = x1 - x0;
+    const h = y1 - y0;
+    const out = new Float32Array(w * h);
+    let maxV = -Infinity;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const v = map[(y0 + y) * width + (x0 + x)];
+        out[y * w + x] = v;
+        if (v > maxV) maxV = v;
+      }
+    }
+    if (map.rawMin !== undefined) {
+      const hi = map.rawHi ?? map.rawMax;
+      const range = hi - map.rawMin;
+      out.rawMin = map.rawMin;
+      out.rawHi = hi;
+      // Сырой максимум внутри региона: если глобальный пик попал в регион — он и есть;
+      // иначе восстанавливаем из нормированного значения (обрезанное 1.0 → rawHi).
+      let inside = false;
+      if (map.rawMaxIdx !== undefined) {
+        const px = map.rawMaxIdx % width;
+        const py = Math.floor(map.rawMaxIdx / width);
+        inside = px >= x0 && px < x1 && py >= y0 && py < y1;
+      }
+      out.rawMax = inside ? map.rawMax : map.rawMin + maxV * range;
+    }
+    return withSize(out, w, h);
   }
   // expose
   window.normalize = normalize;
+  window.withSize = withSize;
+  window.resampleMap = resampleMap;
+  window.cropMap = cropMap;
+  window.NORM_PERCENTILE = NORM_PERCENTILE;
+})();
+
+/* ============= js/stats.js ============= */
+(function() {
+  'use strict';
+  /* ============================================================
+     stats.js — минимальная статистика без зависимостей:
+     описательные статистики, доверительный интервал среднего
+     (t-распределение), однофакторный ANOVA с точным p-value.
+     ============================================================ */
+
+  function meanOf(arr) {
+    if (!arr.length) return NaN;
+    let s = 0;
+    for (const v of arr) s += v;
+    return s / arr.length;
+  }
+
+  /** Выборочное стандартное отклонение (n − 1). */
+  function sdOf(arr) {
+    const n = arr.length;
+    if (n < 2) return NaN;
+    const m = meanOf(arr);
+    let s = 0;
+    for (const v of arr) s += (v - m) * (v - m);
+    return Math.sqrt(s / (n - 1));
+  }
+
+  /**
+   * Среднее и 95 % доверительный интервал по t-распределению.
+   * Возвращает { n, mean, sd, lo, hi }; при n < 2 границы = NaN.
+   */
+  function meanCI95(arr) {
+    const vals = arr.filter((v) => isFinite(v));
+    const n = vals.length;
+    const m = meanOf(vals);
+    const s = sdOf(vals);
+    if (n < 2) return { n, mean: m, sd: s, lo: NaN, hi: NaN };
+    const half = tCritical(0.975, n - 1) * s / Math.sqrt(n);
+    return { n, mean: m, sd: s, lo: m - half, hi: m + half };
+  }
+
+  /**
+   * Однофакторный дисперсионный анализ.
+   * groups — массив массивов чисел (≥ 2 групп, в сумме > числа групп).
+   * Возвращает { F, df1, df2, p, eta2 } или null, если посчитать нельзя.
+   */
+  function oneWayAnova(groups) {
+    const gs = groups.filter((g) => g.length > 0);
+    const k = gs.length;
+    const N = gs.reduce((s, g) => s + g.length, 0);
+    if (k < 2 || N <= k) return null;
+    const grand = meanOf(gs.flat());
+    let ssb = 0, ssw = 0;
+    for (const g of gs) {
+      const m = meanOf(g);
+      ssb += g.length * (m - grand) * (m - grand);
+      for (const v of g) ssw += (v - m) * (v - m);
+    }
+    const df1 = k - 1;
+    const df2 = N - k;
+    const sst = ssb + ssw;
+    if (ssw === 0) {
+      return { F: ssb === 0 ? 0 : Infinity, df1, df2, p: ssb === 0 ? 1 : 0, eta2: sst > 0 ? 1 : 0 };
+    }
+    const F = (ssb / df1) / (ssw / df2);
+    const p = 1 - fCdf(F, df1, df2);
+    return { F, df1, df2, p, eta2: sst > 0 ? ssb / sst : 0 };
+  }
+
+  /* ---------------- распределения ---------------- */
+
+  /** CDF F-распределения через регуляризованную неполную бета-функцию. */
+  function fCdf(F, d1, d2) {
+    if (F <= 0) return 0;
+    const x = (d1 * F) / (d1 * F + d2);
+    return betaInc(x, d1 / 2, d2 / 2);
+  }
+
+  /** CDF t-распределения. */
+  function tCdf(t, df) {
+    const x = df / (df + t * t);
+    const tail = 0.5 * betaInc(x, df / 2, 0.5);
+    return t >= 0 ? 1 - tail : tail;
+  }
+
+  /** Квантиль t-распределения (бисекция по tCdf). */
+  function tCritical(q, df) {
+    let lo = 0, hi = 1000;
+    for (let i = 0; i < 100; i++) {
+      const mid = (lo + hi) / 2;
+      if (tCdf(mid, df) < q) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+
+  /** Регуляризованная неполная бета-функция I_x(a, b) (Numerical Recipes, betacf). */
+  function betaInc(x, a, b) {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    const lbeta = lgamma(a + b) - lgamma(a) - lgamma(b);
+    const front = Math.exp(Math.log(x) * a + Math.log(1 - x) * b + lbeta);
+    if (x < (a + 1) / (a + b + 2)) return front * betacf(x, a, b) / a;
+    return 1 - front * betacf(1 - x, b, a) / b;
+  }
+
+  function betacf(x, a, b) {
+    const MAXIT = 300, EPS = 3e-14, FPMIN = 1e-300;
+    const qab = a + b, qap = a + 1, qam = a - 1;
+    let c = 1, d = 1 - qab * x / qap;
+    if (Math.abs(d) < FPMIN) d = FPMIN;
+    d = 1 / d;
+    let h = d;
+    for (let m = 1; m <= MAXIT; m++) {
+      const m2 = 2 * m;
+      let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+      d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
+      c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
+      d = 1 / d; h *= d * c;
+      aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+      d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
+      c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
+      d = 1 / d;
+      const del = d * c;
+      h *= del;
+      if (Math.abs(del - 1) < EPS) break;
+    }
+    return h;
+  }
+
+  /** ln Γ(x), аппроксимация Ланцоша. */
+  function lgamma(x) {
+    const g = 7;
+    const c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+      771.32342877765313, -176.61502916214059, 12.507343278686905,
+      -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+    if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);
+    x -= 1;
+    let a = c[0];
+    const t = x + g + 0.5;
+    for (let i = 1; i < g + 2; i++) a += c[i] / (x + i);
+    return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+  }
+
+  /** Форматирование p-value для отчёта. */
+  function formatP(p) {
+    if (!isFinite(p)) return '—';
+    if (p < 0.001) return '< .001';
+    return p.toFixed(3).replace(/^0/, '');
+  }
+  // expose
+  window.meanOf = meanOf;
+  window.sdOf = sdOf;
+  window.meanCI95 = meanCI95;
+  window.oneWayAnova = oneWayAnova;
+  window.fCdf = fCdf;
+  window.tCdf = tCdf;
+  window.tCritical = tCritical;
+  window.betaInc = betaInc;
+  window.formatP = formatP;
 })();
 
 /* ============= js/algorithms/blur.js ============= */
@@ -3370,8 +3776,17 @@ input[type="range"]::-moz-range-thumb {
   'use strict';
   /* ============================================================
      ft.js — Frequency-Tuned Saliency (Achanta et al., 2009)
+
+     Как в оригинальной статье:
+       S(x, y) = ‖ I_μ − I_ωhc(x, y) ‖
+     где I_μ — средний Lab-вектор изображения, I_ωhc — изображение,
+     размытое биномиальным ядром 5×5 ([1 4 6 4 1] / 16), а ‖·‖ —
+     евклидова норма (НЕ её квадрат: квадрат искажает распределение
+     значений и занижает mean / spread / entropy).
      ============================================================ */
 
+
+  const BINOMIAL = [1 / 16, 4 / 16, 6 / 16, 4 / 16, 1 / 16];
 
   function ftSaliency(imageData) {
     const { L, A, B, width, height } = rgbToLab(imageData);
@@ -3388,22 +3803,51 @@ input[type="range"]::-moz-range-thumb {
     const muA = sumA / N;
     const muB = sumB / N;
 
-    // Гауссово размытие каждого канала
-    const sigma = 0.025 * Math.min(width, height);
-    const Lb = gaussBlur1D(L, width, height, sigma);
-    const Ab = gaussBlur1D(A, width, height, sigma);
-    const Bb = gaussBlur1D(B, width, height, sigma);
+    // Биномиальное размытие 5×5 каждого канала
+    const Lb = binomialBlur(L, width, height);
+    const Ab = binomialBlur(A, width, height);
+    const Bb = binomialBlur(B, width, height);
 
-    // Карта: квадрат расстояния от среднего до размытого
+    // Карта: евклидово расстояние от среднего до размытого
     const S = new Float32Array(N);
     for (let i = 0; i < N; i++) {
       const dL = muL - Lb[i];
       const dA = muA - Ab[i];
       const dB = muB - Bb[i];
-      S[i] = dL * dL + dA * dA + dB * dB;
+      S[i] = Math.sqrt(dL * dL + dA * dA + dB * dB);
     }
 
     return normalize(S);
+  }
+
+  /** Разделяемое биномиальное размытие 5×5, clamp-to-edge. */
+  function binomialBlur(src, width, height) {
+    const tmp = new Float32Array(width * height);
+    const out = new Float32Array(width * height);
+    for (let y = 0; y < height; y++) {
+      const row = y * width;
+      for (let x = 0; x < width; x++) {
+        let acc = 0;
+        for (let k = -2; k <= 2; k++) {
+          let xi = x + k;
+          if (xi < 0) xi = 0; else if (xi >= width) xi = width - 1;
+          acc += src[row + xi] * BINOMIAL[k + 2];
+        }
+        tmp[row + x] = acc;
+      }
+    }
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let acc = 0;
+        for (let k = -2; k <= 2; k++) {
+          let yi = y + k;
+          if (yi < 0) yi = 0; else if (yi >= height) yi = height - 1;
+          acc += tmp[yi * width + x] * BINOMIAL[k + 2];
+        }
+        out[y * width + x] = acc;
+      }
+    }
+    return out;
   }
   // expose
   window.ftSaliency = ftSaliency;
@@ -3456,7 +3900,8 @@ input[type="range"]::-moz-range-thumb {
     const { R, G, B, width, height } = rgbChannels(imageData);
     const N = R.length;
 
-    const sigma = 0.08 * Math.min(width, height);
+    // σ = 8 % длинной стороны: при сохранённых пропорциях окрестность не зависит от формы кадра
+    const sigma = 0.08 * Math.max(width, height);
     const Rb = gaussBlur1D(R, width, height, sigma);
     const Gb = gaussBlur1D(G, width, height, sigma);
     const Bb = gaussBlur1D(B, width, height, sigma);
@@ -3489,7 +3934,8 @@ input[type="range"]::-moz-range-thumb {
        5. Реконструкция: inverse FFT( exp(R) · e^{iP} ).
        6. Карта = |reconstructed|².
        7. Гауссово размытие (σ = 8 для 64×64).
-       8. Билинейный апскейл до 256×256, нормировка в [0, 1].
+       8. Билинейный апскейл до размера рабочей копии изображения
+          (пропорции сохранены), нормировка в [0, 1].
 
      Размер 64×64 фиксированный — степень двойки, нужен для radix-2 FFT.
      На малом размере SR обычно работает лучше, чем на большом, и это
@@ -3498,7 +3944,6 @@ input[type="range"]::-moz-range-thumb {
 
 
   const SR_SIZE = 64;        // FFT работает на 64×64
-  const FINAL_SIZE = 256;    // Для согласованности с другими методами
   const SR_LOG_SIGMA = 8;    // σ финального гауссова размытия (на 64×64)
   const LOG_KERNEL = 3;      // окно усреднения лог-спектра (3×3 по оригиналу)
   const EPS = 1e-10;         // защита логарифма от нуля
@@ -3550,8 +3995,8 @@ input[type="range"]::-moz-range-thumb {
     // Шаг 8: финальное гауссово размытие
     const blurred = gaussBlur1D(sal, SR_SIZE, SR_SIZE, SR_LOG_SIGMA);
 
-    // Шаг 9: апскейл до 256×256, чтобы метрики и render были согласованы
-    const upscaled = upscaleBilinear(blurred, SR_SIZE, SR_SIZE, FINAL_SIZE, FINAL_SIZE);
+    // Шаг 9: апскейл до размера рабочей копии — чтобы карта совпадала с другими методами
+    const upscaled = upscaleBilinear(blurred, SR_SIZE, SR_SIZE, srcW, srcH);
 
     // Шаг 10: нормировка [0, 1]
     return normalize(upscaled);
@@ -3588,8 +4033,8 @@ input[type="range"]::-moz-range-thumb {
   /** Билинейная интерполяция при upscaling. */
   function upscaleBilinear(src, srcW, srcH, dstW, dstH) {
     const out = new Float32Array(dstW * dstH);
-    const sx = (srcW - 1) / (dstW - 1);
-    const sy = (srcH - 1) / (dstH - 1);
+    const sx = dstW > 1 ? (srcW - 1) / (dstW - 1) : 0;
+    const sy = dstH > 1 ? (srcH - 1) / (dstH - 1) : 0;
     for (let y = 0; y < dstH; y++) {
       const fy = y * sy;
       const y0 = Math.floor(fy);
@@ -3655,10 +4100,18 @@ input[type="range"]::-moz-range-thumb {
     sr:    spectralResidualSaliency,
   };
 
+  /**
+   * Считает карту салиентности. Карта имеет размер рабочей копии
+   * изображения (длинная сторона 256 px, пропорции сохранены);
+   * размеры прикреплены к массиву как sal.width / sal.height.
+   */
   function computeSaliency(imageData, method) {
     const fn = METHODS[method];
     if (!fn) throw new Error(`Неизвестный метод: ${method}`);
-    return fn(imageData);
+    const sal = fn(imageData);
+    sal.width = imageData.width;
+    sal.height = imageData.height;
+    return sal;
   }
 
   const METHOD_LABELS = {
@@ -3744,6 +4197,7 @@ input[type="range"]::-moz-range-thumb {
      metrics.js — 7 скалярных метрик карты салиентности
      ============================================================ */
 
+
   const round = (v, d) => {
     const p = 10 ** d;
     return Math.round(v * p) / p;
@@ -3778,34 +4232,49 @@ input[type="range"]::-moz-range-thumb {
    * Вычисляет mean, peak, entropy, center_bias, spread_pct, peak_x, peak_y
    * для карты sal (Float32Array, длина width*height, значения в [0, 1]).
    *
-   * Замечание про peak. Спека пишет «peak = max(S)», но S после
-   * нормализации всегда даёт max = 1.0 — метрика была бы константой.
-   * Поэтому реально информативная пиковая салиентность — это
-   * максимум сырой карты ДО нормализации (нормализатор сохраняет
-   * это значение в свойстве sal.rawMax). Координаты пика (peak_x/y)
-   * берём из нормированной карты — это та же позиция, что и у raw.
+   * peak — максимум сырой карты ДО нормировки (sal.rawMax): после
+   * нормировки максимум всегда 1.0 и метрика была бы константой.
+   *
+   * peak_x / peak_y — центр масс всех пикселей с максимальным значением
+   * (при робастной нормировке вершина может быть «плато»), по центрам
+   * пикселей: 0 % — левый/верхний край, 100 % — правый/нижний.
+   *
+   * center_bias — отношение средних внутри и вне центрального эллипса
+   * с полуосями 0.7·(W/2) и 0.7·(H/2). Эллипс повторяет форму кадра,
+   * поэтому доля «центра» одинакова (≈ 38.5 % площади) для любых пропорций.
    */
   function computeMetrics(sal, width, height) {
+    width = width ?? sal.width;
+    height = height ?? sal.height;
     const N = sal.length;
 
     let sum = 0;
     let peakNormalized = -Infinity;
-    let peakIdx = 0;
     let spreadCount = 0;
 
     for (let i = 0; i < N; i++) {
       const v = sal[i];
       sum += v;
-      if (v > peakNormalized) { peakNormalized = v; peakIdx = i; }
+      if (v > peakNormalized) peakNormalized = v;
       if (v > 0.5) spreadCount++;
+    }
+
+    // Центр масс вершины (все пиксели, равные максимуму)
+    let px = 0, py = 0, pc = 0;
+    for (let i = 0; i < N; i++) {
+      if (sal[i] === peakNormalized) {
+        px += (i % width) + 0.5;
+        py += Math.floor(i / width) + 0.5;
+        pc++;
+      }
     }
 
     // Реальный пик — из сырых данных, сохранённых нормализатором
     const peak = sal.rawMax !== undefined ? sal.rawMax : peakNormalized;
 
     const mean = sum / N;
-    const peakX = (peakIdx % width) / width  * 100;
-    const peakY = Math.floor(peakIdx / width) / height * 100;
+    const peakX = pc ? (px / pc) / width * 100 : 50;
+    const peakY = pc ? (py / pc) / height * 100 : 50;
     const spreadPct = (spreadCount / N) * 100;
 
     // Энтропия по гистограмме из 64 бинов
@@ -3825,18 +4294,18 @@ input[type="range"]::-moz-range-thumb {
       }
     }
 
-    // Center bias: μ_inner / μ_outer, inner radius = 0.7 * min(cx, cy)
+    // Center bias: μ_inner / μ_outer, эллипс с полуосями 0.7·cx и 0.7·cy
     const cx = width / 2;
     const cy = height / 2;
-    const innerR = 0.7 * Math.min(cx, cy);
-    const innerR2 = innerR * innerR;
+    const ax = 0.7 * cx;
+    const ay = 0.7 * cy;
     let innerSum = 0, innerCnt = 0, outerSum = 0, outerCnt = 0;
     for (let y = 0; y < height; y++) {
+      const dy = (y + 0.5 - cy) / ay;
       for (let x = 0; x < width; x++) {
-        const dx = x - cx;
-        const dy = y - cy;
+        const dx = (x + 0.5 - cx) / ax;
         const v = sal[y * width + x];
-        if (dx * dx + dy * dy <= innerR2) {
+        if (dx * dx + dy * dy <= 1) {
           innerSum += v;
           innerCnt++;
         } else {
@@ -3890,7 +4359,7 @@ input[type="range"]::-moz-range-thumb {
       formula: 'max(S) — до нормировки в [0, 1]',
       what:    'Абсолютная сила самого выраженного «магнита» внимания в шкале выбранного метода. Чем выше — тем сильнее самая заметная точка выделяется относительно остального изображения. Если бы мы брали максимум уже нормированной карты, он по построению всегда равнялся бы 1.0 — поэтому метрика берёт максимум до нормировки.',
       read:    [
-        ['метод-зависимо',     'значение в шкале выбранного метода: FT, DoG и Local Contrast дают разные единицы'],
+        ['метод-зависимо',     'значение в шкале выбранного метода: FT — расстояние в CIE Lab (обычно 10–100), DoG — сумма перепадов яркости в шкале 0–255 (десятки), Local Contrast — квадрат расстояния в RGB (0–3), SR — энергия спектрального остатка (произвольные единицы)'],
         ['растёт с контрастом', 'у изображения с резко выделенной «горячей» точкой peak больше'],
         ['сравнивайте в серии', 'peak осмыслен только при одном и том же методе оценки'],
       ],
@@ -3899,7 +4368,7 @@ input[type="range"]::-moz-range-thumb {
 
     entropy: {
       label:   'Энтропия',
-      desc:    'Неравномерность распределения (Шеннон, биты, 64 бина)',
+      desc:    'Разнообразие значений карты (Шеннон, биты, 64 бина, максимум 6)',
       formula: '−Σ p · log₂(p)',
       what:    'Насколько разнообразны значения салиентности на карте. Высокая энтропия — много разных уровней заметности; низкая — карта почти плоская и одного уровня.',
       read:    [
@@ -3913,7 +4382,7 @@ input[type="range"]::-moz-range-thumb {
     center_bias: {
       label:   'Центр / периферия',
       desc:    'Отношение средней салиентности в центре к периферии',
-      formula: 'μ_inner / μ_outer, радиус = 0.7 · min(cx, cy)',
+      formula: 'μ_inner / μ_outer, эллипс с полуосями 0.7·W/2 и 0.7·H/2',
       what:    'Насколько внимание сконцентрировано в центральной зоне относительно периферии. Известно, что при свободном просмотре участники по умолчанию смотрят ближе к центру кадра — этот «центральный сдвиг» нужно учитывать.',
       read:    [
         ['≈ 1.0', 'салиентность распределена равномерно по кадру'],
@@ -3939,7 +4408,7 @@ input[type="range"]::-moz-range-thumb {
     peak_x: {
       label:   'Пик · X',
       desc:    'Горизонтальная позиция максимума (% от ширины)',
-      formula: 'argmax_x(S) / width × 100',
+      formula: '(x_пика + 0.5) / W × 100',
       what:    'Где по горизонтали находится самая заметная точка. 0 % — левый край, 50 % — центр, 100 % — правый край.',
       read:    [
         ['≈ 50 %',           'фокус по центру горизонтали'],
@@ -3952,7 +4421,7 @@ input[type="range"]::-moz-range-thumb {
     peak_y: {
       label:   'Пик · Y',
       desc:    'Вертикальная позиция максимума (% от высоты)',
-      formula: 'argmax_y(S) / height × 100',
+      formula: '(y_пика + 0.5) / H × 100',
       what:    'Где по вертикали находится самая заметная точка. 0 % — верх, 50 % — центр, 100 % — низ.',
       read:    [
         ['≈ 50 %',           'фокус по центру вертикали'],
@@ -3970,7 +4439,7 @@ input[type="range"]::-moz-range-thumb {
     ft: {
       title:  'FT — Frequency-Tuned Saliency',
       source: 'Achanta et al., 2009',
-      what:    'Сравнивает каждый пиксель со средним цветом всего изображения в перцептивном пространстве CIE Lab после слабого размытия. По сути — «отклонение от типичного цвета сцены».',
+      what:    'Сравнивает каждый пиксель со средним цветом всего изображения в перцептивном пространстве CIE Lab после слабого размытия (биномиальное ядро 5×5, как в оригинальной статье); значение — евклидово расстояние. По сути — «отклонение от типичного цвета сцены».',
       when:    'Лучше всего работает на цветных натуральных сценах: фотографии, лица, объекты на фоне. Чувствителен к цветовым контрастам.',
       pitfall: 'На монохромных или насыщенных текстурой изображениях даёт плоскую карту — на них лучше выбрать DoG.',
     },
@@ -3984,7 +4453,7 @@ input[type="range"]::-moz-range-thumb {
     local: {
       title:  'Local Color Contrast',
       source: 'быстрый скрининговый метод',
-      what:    'Сравнивает каждый пиксель с локальным средним по большой окрестности (σ ≈ 8 % от размера изображения).',
+      what:    'Сравнивает цвет (RGB) каждого пикселя с локальным средним по большой окрестности (σ ≈ 8 % длинной стороны изображения).',
       when:    'Самый быстрый из четырёх. Подходит для первичной сортировки больших наборов — быстро отбраковать заведомо неудачные.',
       pitfall: 'Менее точный, чем FT и DoG. Для финального анализа лучше выбрать FT.',
     },
@@ -3993,14 +4462,26 @@ input[type="range"]::-moz-range-thumb {
       source: 'Hou & Zhang, 2007',
       what:    'Анализирует амплитудный спектр Фурье изображения. То, что отличается от среднего «гладкого» лог-спектра, и есть спектральный остаток. Он декодируется обратно в карту салиентности с фазой исходного сигнала. Метод подсвечивает редкие, нетипичные для сцены паттерны.',
       when:    'Когда нужно найти необычные элементы в сложной сцене. Хорошо работает на изображениях с богатым фоном; устойчив к глобальной яркости и контрасту. Иногда выделяет другие зоны, чем FT и DoG, — полезно сравнить методы между собой.',
-      pitfall: 'Чувствителен к артефактам сжатия: на сильно зашумлённых JPEG может выделять блочные границы. Работает на 64×64 — мелкие детали теряются. Не использует цвет.',
+      pitfall: 'Чувствителен к артефактам сжатия: на сильно зашумлённых JPEG может выделять блочные границы. Спектр считается на 64×64 — мелкие детали теряются. Не использует цвет.',
     },
   };
 
-  /** Корреляция Пирсона между двумя картами одинаковой длины. */
+  /** Сетка, на которую приводятся карты разного размера перед корреляцией. */
+  const CORR_GRID = 128;
+
+  /**
+   * Корреляция Пирсона между двумя картами.
+   * Если карты разного размера (разные пропорции изображений), обе
+   * приводятся билинейно к общей сетке CORR_GRID×CORR_GRID — то есть
+   * сравнение идёт в относительных координатах кадра (0–100 % по осям).
+   */
   function pearsonR(A, B) {
+    if (A.length !== B.length) {
+      if (!A.width || !B.width) throw new Error('Длины массивов не совпадают');
+      A = resampleMap(A, A.width, A.height, CORR_GRID, CORR_GRID);
+      B = resampleMap(B, B.width, B.height, CORR_GRID, CORR_GRID);
+    }
     const N = A.length;
-    if (B.length !== N) throw new Error('Длины массивов не совпадают');
 
     let sumA = 0, sumB = 0;
     for (let i = 0; i < N; i++) {
@@ -4120,11 +4601,27 @@ input[type="range"]::-moz-range-thumb {
   'use strict';
   /* ============================================================
      loader.js — загрузка изображений
-     File → ImageData 256×256 (фиксированный размер для скорости)
-     + сохранение оригинала для рендера в исходном разрешении.
+     File → рабочая копия ImageData (длинная сторона 256 px,
+     ПРОПОРЦИИ СОХРАНЕНЫ) + оригинал для рендера в исходном разрешении.
+
+     Раньше изображение сжималось в квадрат 256×256, из-за чего
+     широкие и высокие кадры искажались: размытие становилось
+     анизотропным, а центр/периферия и корреляции между картами
+     считались по деформированному изображению.
      ============================================================ */
 
+  /** Длина длинной стороны рабочей копии, px. */
   const TARGET_SIZE = 256;
+  const MIN_SIDE = 8;
+
+  /** Размер рабочей копии для исходного w×h (длинная сторона = TARGET_SIZE). */
+  function workSize(w, h) {
+    const k = TARGET_SIZE / Math.max(w, h);
+    return {
+      width:  Math.max(MIN_SIDE, Math.round(w * k)),
+      height: Math.max(MIN_SIDE, Math.round(h * k)),
+    };
+  }
 
   const ALLOWED = /\.(jpe?g|png|webp|bmp)$/i;
 
@@ -4147,15 +4644,16 @@ input[type="range"]::-moz-range-thumb {
           const origW = img.naturalWidth;
           const origH = img.naturalHeight;
 
+          const { width: ww, height: wh } = workSize(origW, origH);
           const canvas = document.createElement('canvas');
-          canvas.width = TARGET_SIZE;
-          canvas.height = TARGET_SIZE;
+          canvas.width = ww;
+          canvas.height = wh;
           const ctx = canvas.getContext('2d');
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(img, 0, 0, TARGET_SIZE, TARGET_SIZE);
+          ctx.drawImage(img, 0, 0, ww, wh);
 
-          const imageData = ctx.getImageData(0, 0, TARGET_SIZE, TARGET_SIZE);
+          const imageData = ctx.getImageData(0, 0, ww, wh);
           const thumb = canvas.toDataURL('image/jpeg', 0.85);
 
           resolve({
@@ -4197,19 +4695,20 @@ input[type="range"]::-moz-range-thumb {
   }
 
   /**
-   * Извлечь ImageData 256×256 из произвольной области HTMLImageElement
-   * (для режима составного стимула).
+   * Извлечь рабочую копию ImageData (пропорции сохранены) из произвольной
+   * области HTMLImageElement (превью регионов составного стимула).
    */
   function cropToImageData(srcImage, sx, sy, sw, sh) {
+    const { width: ww, height: wh } = workSize(sw, sh);
     const canvas = document.createElement('canvas');
-    canvas.width = TARGET_SIZE;
-    canvas.height = TARGET_SIZE;
+    canvas.width = ww;
+    canvas.height = wh;
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(srcImage, sx, sy, sw, sh, 0, 0, TARGET_SIZE, TARGET_SIZE);
+    ctx.drawImage(srcImage, sx, sy, sw, sh, 0, 0, ww, wh);
     return {
-      imageData: ctx.getImageData(0, 0, TARGET_SIZE, TARGET_SIZE),
+      imageData: ctx.getImageData(0, 0, ww, wh),
       thumb: canvas.toDataURL('image/jpeg', 0.85),
     };
   }
@@ -4218,6 +4717,7 @@ input[type="range"]::-moz-range-thumb {
   window.loadImageFiles = loadImageFiles;
   window.cropToImageData = cropToImageData;
   window.TARGET_SIZE = TARGET_SIZE;
+  window.workSize = workSize;
 })();
 
 /* ============= js/export.js ============= */
@@ -4381,8 +4881,11 @@ input[type="range"]::-moz-range-thumb {
   'use strict';
   /* ============================================================
      csv-parser.js — универсальный парсер CSV/TSV
-     Авто-определяет разделитель (`;` или `,` или `\t`).
-     Предлагает соответствие колонок по нечёткому совпадению.
+     Авто-определяет разделитель (`;`, `,` или `\t`), корректно
+     разбирает кавычки (включая переносы строк внутри кавычек).
+     Сопоставляет колонки с ролями по ЦЕЛЫМ словам названия
+     (а не по подстроке: раньше колонка «Export date» могла
+     распознаться как X, потому что в ней есть буква «x»).
      ============================================================ */
 
   /**
@@ -4390,31 +4893,39 @@ input[type="range"]::-moz-range-thumb {
    * rows — массив объектов {colName: value}.
    */
   function parseCSV(text) {
-    // BOM
     if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
 
-    const lines = text.split(/\r?\n/);
-    if (!lines.length) return { columns: [], rows: [], separator: ',' };
-
-    // Определяем разделитель по первой строке
-    const first = lines[0] || '';
-    const counts = {
-      ';': (first.match(/;/g) || []).length,
-      ',': (first.match(/,/g) || []).length,
-      '\t': (first.match(/\t/g) || []).length,
-    };
+    // Разделитель — по первой строке (вне кавычек)
+    const firstLineEnd = text.search(/\r?\n/);
+    const first = firstLineEnd === -1 ? text : text.slice(0, firstLineEnd);
+    const counts = { ';': 0, ',': 0, '\t': 0 };
+    let q = false;
+    for (const ch of first) {
+      if (ch === '"') q = !q;
+      else if (!q && ch in counts) counts[ch]++;
+    }
     let sep = ',';
     let max = -1;
     for (const k of Object.keys(counts)) {
       if (counts[k] > max) { max = counts[k]; sep = k; }
     }
 
-    const columns = parseLine(lines[0], sep);
+    const records = parseRecords(text, sep);
+    if (!records.length) return { columns: [], rows: [], separator: sep };
+
+    // Имена колонок: обрезаем пробелы, дубликаты делаем уникальными
+    const seen = new Map();
+    const columns = records[0].map((c) => {
+      const name = (c || '').trim();
+      const n = seen.get(name) || 0;
+      seen.set(name, n + 1);
+      return n ? `${name} (${n + 1})` : name;
+    });
+
     const rows = [];
-    for (let i = 1; i < lines.length; i++) {
-      const ln = lines[i];
-      if (!ln || !ln.trim()) continue;
-      const values = parseLine(ln, sep);
+    for (let i = 1; i < records.length; i++) {
+      const values = records[i];
+      if (values.length === 1 && !values[0].trim()) continue;
       const obj = {};
       for (let j = 0; j < columns.length; j++) {
         obj[columns[j]] = values[j] != null ? values[j] : '';
@@ -4424,80 +4935,221 @@ input[type="range"]::-moz-range-thumb {
     return { columns, rows, separator: sep };
   }
 
-  /** Парсинг одной строки CSV с учётом кавычек. */
-  function parseLine(line, sep) {
+  /** Посимвольный разбор CSV с учётом кавычек и "" внутри кавычек. */
+  function parseRecords(text, sep) {
     const out = [];
+    let row = [];
     let cur = '';
     let inQuote = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
-        else inQuote = !inQuote;
-      } else if (ch === sep && !inQuote) {
-        out.push(cur);
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQuote) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { cur += '"'; i++; }
+          else inQuote = false;
+        } else {
+          cur += ch;
+        }
+      } else if (ch === '"') {
+        inQuote = true;
+      } else if (ch === sep) {
+        row.push(cur);
+        cur = '';
+      } else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && text[i + 1] === '\n') i++;
+        row.push(cur);
+        out.push(row);
+        row = [];
         cur = '';
       } else {
         cur += ch;
       }
     }
-    out.push(cur);
+    if (cur !== '' || row.length) {
+      row.push(cur);
+      out.push(row);
+    }
     return out;
   }
 
+  /* ============================================================
+     Распознавание колонок
+     ============================================================ */
+
+  /** Роли колонок и подписи для UI. */
+  const COLUMN_ROLES = [
+    ['x',           'X'],
+    ['y',           'Y'],
+    ['type',        'Тип события'],
+    ['duration',    'Длительность'],
+    ['participant', 'Участник'],
+    ['stimulus',    'Стимул'],
+    ['fixIndex',    'Номер фиксации'],
+  ];
+
+  const tokens = (name) => (name || '').toLowerCase().split(/[^a-zа-яё0-9]+/i).filter(Boolean);
+  const squash = (name) => (name || '').toLowerCase().replace(/[^a-zа-яё0-9]+/gi, '');
+
   /**
-   * Эвристическое сопоставление колонок CSV с ожидаемыми ролями.
-   * Возвращает {x, y, type, duration, participant, stimulus}
-   * где значения — реальные имена колонок из CSV (или null).
+   * Правила: exact — полные имена (без пробелов/подчёркиваний, в нижнем
+   * регистре); score(tokens) — оценка по словам названия (0 — не подходит).
+   */
+  const RULES = {
+    x: {
+      exact: ['x', 'xpx', 'xpixel', 'fixx', 'fixationx', 'gazex', 'currentfixx', 'fpogx', 'posx',
+              'fixationpointx', 'meanx', 'avgx', 'fixxpx'],
+      score: (t) => {
+        if (!t.includes('x') || t.includes('y')) return 0;
+        let s = 40;
+        if (t.some((w) => /^(fix|fixation|fpog|fixpoint)$/.test(w))) s += 25;
+        if (t.includes('px') || t.includes('pixel') || t.includes('pixels')) s += 10;
+        if (t.some((w) => /^(mcs|mcsnorm|dacs|mm|norm|dva|deg|velocity|size|resolution|screen|offset|origin|camera)$/.test(w))) s -= 35;
+        return s;
+      },
+    },
+    y: {
+      exact: ['y', 'ypx', 'ypixel', 'fixy', 'fixationy', 'gazey', 'currentfixy', 'fpogy', 'posy',
+              'fixationpointy', 'meany', 'avgy', 'fixypx'],
+      score: (t) => {
+        if (!t.includes('y') || t.includes('x')) return 0;
+        let s = 40;
+        if (t.some((w) => /^(fix|fixation|fpog|fixpoint)$/.test(w))) s += 25;
+        if (t.includes('px') || t.includes('pixel') || t.includes('pixels')) s += 10;
+        if (t.some((w) => /^(mcs|mcsnorm|dacs|mm|norm|dva|deg|velocity|size|resolution|screen|offset|origin|camera)$/.test(w))) s -= 35;
+        return s;
+      },
+    },
+    type: {
+      exact: ['type', 'eventtype', 'event', 'eyemovementtype', 'categorybinocular', 'category',
+              'categoryleft', 'categoryright'],
+      score: (t) => {
+        if (t.includes('index') || t.includes('id')) return 0;
+        if (t.includes('movement') && t.includes('type')) return 70;
+        if (t.includes('category')) return 55;
+        if (t.includes('event') && t.includes('type')) return 60;
+        if (t.includes('type') && !t.includes('trial') && !t.includes('media')) return 30;
+        return 0;
+      },
+    },
+    duration: {
+      exact: ['dursec', 'durms', 'duration', 'fixdur', 'fixationduration', 'currentfixduration',
+              'gazeeventduration', 'eventduration', 'eventdurationms', 'fpogd', 'dur'],
+      score: (t) => {
+        if (t.includes('duration') && (t.includes('fixation') || t.includes('fix') || t.includes('event'))) return 60;
+        if (t.includes('duration') || t.includes('dur')) return 40;
+        return 0;
+      },
+    },
+    participant: {
+      exact: ['resultname', 'participant', 'participantname', 'participantid', 'subject', 'subjectname',
+              'subjectid', 'observer', 'user', 'recordingsessionlabel', 'recordingname', 'sessionlabel', 'pid'],
+      score: (t) => {
+        if (t.includes('participant') || t.includes('subject') || t.includes('observer')) return 60;
+        if (t.includes('recording') && (t.includes('name') || t.includes('label'))) return 45;
+        if (t.includes('session') && t.includes('label')) return 40;
+        return 0;
+      },
+    },
+    stimulus: {
+      exact: ['stimulus', 'stimulusname', 'presentedstimulusname', 'stim', 'image', 'imagename',
+              'filename', 'media', 'medianame', 'stimuli'],
+      score: (t) => {
+        if (t.includes('stimulus') || t.includes('stim') || t.includes('stimuli')) return 60;
+        if (t.includes('media') && t.includes('name')) return 55;
+        if (t.includes('image')) return 45;
+        if (t.includes('media')) return 35;
+        return 0;
+      },
+    },
+    fixIndex: {
+      exact: ['eyemovementtypeindex', 'fixationindex', 'fixindex', 'currentfixindex', 'fixationid',
+              'fixid', 'fpogid', 'indexbinocular'],
+      score: (t) => {
+        const idx = t.includes('index') || t.includes('id') || t.includes('number') || t.includes('nr');
+        if (!idx) return 0;
+        if (t.includes('fixation') || t.includes('fix') || t.includes('fpog')) return 60;
+        if (t.includes('movement') && t.includes('type')) return 55;
+        return 0;
+      },
+    },
+  };
+
+  /**
+   * Эвристическое сопоставление колонок CSV с ролями.
+   * Возвращает {x, y, type, duration, participant, stimulus, fixIndex}
+   * — реальные имена колонок (или null).
    */
   function detectColumns(columns) {
-    const lower = columns.map((c) => (c || '').toLowerCase().trim());
-
-    const find = (...patterns) => {
-      // exact match first
-      for (const p of patterns) {
-        const i = lower.indexOf(p);
-        if (i !== -1) return columns[i];
+    const taken = new Set();
+    const out = {};
+    for (const [role] of COLUMN_ROLES) {
+      const rule = RULES[role];
+      let best = null, bestScore = 0;
+      for (const col of columns) {
+        if (taken.has(col)) continue;
+        const sq = squash(col);
+        let sc = rule.exact.includes(sq) ? 100 - rule.exact.indexOf(sq) * 0.01 : rule.score(tokens(col));
+        if (sc > bestScore) { bestScore = sc; best = col; }
       }
-      // includes match
-      for (const p of patterns) {
-        const i = lower.findIndex((c) => c.includes(p));
-        if (i !== -1) return columns[i];
-      }
-      return null;
-    };
+      out[role] = bestScore >= 30 ? best : null;
+      if (out[role]) taken.add(out[role]);
+    }
+    return out;
+  }
 
-    return {
-      x:           find('x_px', 'x_pixel', 'gaze_x', 'fix_x', 'x'),
-      y:           find('y_px', 'y_pixel', 'gaze_y', 'fix_y', 'y'),
-      type:        find('type', 'event', 'event_type', 'category'),
-      duration:    find('dur_sec', 'duration', 'fix_dur', 'dur', 'fixation_duration'),
-      participant: find('result_name', 'participant', 'subject', 'user', 'observer', 'id'),
-      stimulus:    find('stimulus', 'image', 'filename', 'media', 'stim'),
-    };
+  /* ============================================================
+     Извлечение фиксаций
+     ============================================================ */
+
+  /** Значение колонки типа события считается фиксацией? Пустое — да. */
+  function isFixationType(v) {
+    const t = String(v ?? '').toLowerCase().trim();
+    return !t || t.startsWith('fix') || t === 'f' || t.startsWith('фикс');
   }
 
   /**
-   * Извлечь фиксации с числовыми координатами и опциональной длительностью.
-   * Если в CSV есть колонка `type` — фильтруем по 'fixation' / 'fix'.
-   * Если опция stimulus задана — фильтруем по точному совпадению имени.
+   * Извлечь фиксации с числовыми координатами.
+   *
+   *  • Если есть колонка типа — оставляем только фиксации.
+   *  • Если задан stimulus — фильтр по точному совпадению.
+   *  • Выгрузки «по отсчётам» (Tobii Pro Lab, BeGaze raw) повторяют одну
+   *    фиксацию во многих строках. Повторы убираются: по номеру фиксации
+   *    (если колонка есть), иначе — подряд идущие строки с тем же
+   *    участником, стимулом и теми же координатами.
+   *
+   * Возвращает массив {x, y, duration, participant, stimulus};
+   * у массива есть свойство .duplicatesRemoved.
    */
   function extractFixations(rows, mapping, opts = {}) {
     const { stimulus = null } = opts;
     const out = [];
+    const seenIdx = new Set();
+    let prevKey = null;
+    let dup = 0;
 
     for (const row of rows) {
-      if (mapping.type) {
-        const t = String(row[mapping.type] || '').toLowerCase().trim();
-        if (t && t !== 'fixation' && t !== 'fix') continue;
-      }
-      if (stimulus && mapping.stimulus) {
-        if (row[mapping.stimulus] !== stimulus) continue;
-      }
+      if (mapping.type && !isFixationType(row[mapping.type])) continue;
+      const stim = mapping.stimulus ? row[mapping.stimulus] : null;
+      if (stimulus && mapping.stimulus && stim !== stimulus) continue;
 
       const x = parseNum(row[mapping.x]);
       const y = parseNum(row[mapping.y]);
-      if (!isFinite(x) || !isFinite(y)) continue;
+      if (!isFinite(x) || !isFinite(y)) { prevKey = null; continue; }
+
+      const participant = mapping.participant ? row[mapping.participant] : null;
+
+      if (mapping.fixIndex) {
+        const idx = row[mapping.fixIndex];
+        if (idx !== '' && idx != null) {
+          const key = `${participant}\u0001${stim}\u0001${idx}`;
+          if (seenIdx.has(key)) { dup++; continue; }
+          seenIdx.add(key);
+        }
+      } else {
+        const key = `${participant}\u0001${stim}\u0001${x}\u0001${y}`;
+        if (key === prevKey) { dup++; continue; }
+        prevKey = key;
+      }
 
       let duration = 1;
       if (mapping.duration) {
@@ -4505,10 +5157,10 @@ input[type="range"]::-moz-range-thumb {
         if (isFinite(d) && d > 0) duration = d;
       }
 
-      const participant = mapping.participant ? row[mapping.participant] : null;
-      out.push({ x, y, duration, participant });
+      out.push({ x, y, duration, participant, stimulus: stim });
     }
 
+    out.duplicatesRemoved = dup;
     return out;
   }
 
@@ -4523,53 +5175,409 @@ input[type="range"]::-moz-range-thumb {
     return [...set];
   }
 
+  /** Нормализованное имя для сопоставления стимула и файла изображения. */
+  function stimulusKey(name) {
+    const base = String(name || '').split(/[\\/]/).pop();
+    return base.replace(/\.[a-z0-9]{2,5}$/i, '').trim().toLowerCase();
+  }
+
+  /** Найти в списке стимулов CSV тот, что соответствует файлу изображения. */
+  function matchStimulus(stimuli, fileName) {
+    const key = stimulusKey(fileName);
+    return stimuli.find((s) => stimulusKey(s) === key) || null;
+  }
+
   function parseNum(v) {
     if (v == null) return NaN;
-    return parseFloat(String(v).replace(',', '.'));
+    const s = String(v).trim();
+    if (!s) return NaN;
+    return parseFloat(s.replace(',', '.'));
   }
   // expose
   window.parseCSV = parseCSV;
   window.detectColumns = detectColumns;
   window.extractFixations = extractFixations;
   window.uniqueStimuli = uniqueStimuli;
+  window.stimulusKey = stimulusKey;
+  window.matchStimulus = matchStimulus;
+  window.parseNum = parseNum;
+  window.COLUMN_ROLES = COLUMN_ROLES;
 })();
 
 /* ============= js/eyetracking/fixmap.js ============= */
 (function() {
   'use strict';
   /* ============================================================
-     fixmap.js — построение fixation map через KDE
-     и метрики соответствия с моделью салиентности.
+     fixmap.js — карта фиксаций (KDE) и метрики соответствия
+     модели салиентности реальным фиксациям.
 
-     Карта строится на сетке 256×256 (TARGET) — той же, на которой
-     считается и салиентность. Это обеспечивает прямую сравнимость.
+     Все карты строятся на сетке карты салиентности (gw × gh:
+     длинная сторона 256 px, пропорции стимула сохранены).
 
-     σ в исходных пикселях кадра масштабируется в σ для сетки 256.
+     Координаты фиксаций переводятся в координаты стимула через
+     прямоугольник frame = {x0, y0, w, h}: где на экране (в единицах
+     айтрекера) находился стимул. Фиксации вне стимула отбрасываются
+     и считаются отдельно.
+
+     Метрики — по определениям MIT/Tuebingen Saliency Benchmark
+     (Bylinskii et al., 2019, IEEE TPAMI): CC, NSS, AUC-Judd,
+     shuffled AUC, SIM, KL-divergence.
      ============================================================ */
 
 
-  const TARGET = 256;
+  const EPS = 2.2204e-16;   // как в эталонном коде MIT benchmark
+
+  /* ============================================================
+     Координаты
+     ============================================================ */
 
   /**
-   * Анизотропная гауссова свёртка: разные σ по осям.
-   * Делает раздельные проходы — горизонтальный с σx, вертикальный с σy.
-   * Это нужно когда исходное изображение неквадратное и мы маппим
-   * пиксели в единый размер 256×256 — на сетке σ становится разным
-   * по X и Y, чтобы соответствовать ИЗОТРОПНОМУ ядру в исходном пространстве.
+   * Перевести фиксации в ячейки сетки gw×gh.
+   * Возвращает { points: [{gx, gy, idx, u, v, w, participant}], outside }.
+   * u, v — относительные координаты внутри стимула (0…1).
    */
-  function gaussBlur2DAniso(src, w, h, sigmaX, sigmaY) {
-    // Горизонтальный проход с σx
-    const tmp = sigmaX > 0 ? gaussBlur1D_axis(src, w, h, sigmaX, true)  : new Float32Array(src);
-    // Вертикальный проход с σy
-    const out = sigmaY > 0 ? gaussBlur1D_axis(tmp, w, h, sigmaY, false) : tmp;
-    return out;
+  function mapFixations(fixations, frame, gw, gh, weighted = false) {
+    const points = [];
+    let outside = 0;
+    for (const f of fixations) {
+      const u = (f.x - frame.x0) / frame.w;
+      const v = (f.y - frame.y0) / frame.h;
+      if (!(u >= 0 && u < 1 && v >= 0 && v < 1)) { outside++; continue; }
+      const gx = Math.min(gw - 1, Math.floor(u * gw));
+      const gy = Math.min(gh - 1, Math.floor(v * gh));
+      points.push({
+        gx, gy, idx: gy * gw + gx, u, v,
+        w: weighted && f.duration > 0 ? f.duration : 1,
+        participant: f.participant,
+      });
+    }
+    return { points, outside };
+  }
+
+  /* ============================================================
+     KDE-карта фиксаций
+     ============================================================ */
+
+  /**
+   * Карта фиксаций: точки → гауссово ядро.
+   * sigmaPx — σ в единицах координат айтрекера (обычно px экрана);
+   * на сетке σ пересчитывается отдельно по осям.
+   * Края — нулевое дополнение (масса ядра за краем кадра теряется,
+   * а не «прилипает» к границе).
+   *
+   * Возвращает { map, density }:
+   *   map     — нормирована в [0, 1] (для показа и CC),
+   *   density — сумма = 1 (распределение для SIM и KL).
+   */
+  function buildFixationMap(points, gw, gh, frame, sigmaPx) {
+    const raw = new Float32Array(gw * gh);
+    for (const p of points) raw[p.idx] += p.w;
+    const sx = Math.max(0.5, sigmaPx * gw / frame.w);
+    const sy = Math.max(0.5, sigmaPx * gh / frame.h);
+    const blurred = gaussBlur2DAniso(raw, gw, gh, sx, sy);
+    return {
+      map: withSize(normalize(blurred), gw, gh),
+      density: withSize(toDistribution(blurred), gw, gh),
+    };
   }
 
   /**
-   * Однопроходное размытие по одной оси (true — по X, false — по Y).
-   * Реализация дублирует логику gaussBlur1D, но с управляемой осью.
+   * Центральный baseline: гауссиана в центре кадра, σ = ¼ ширины
+   * и ¼ высоты. Нужен как точка отсчёта: многие «хорошие» NSS/AUC
+   * объясняются просто центральным сдвигом взгляда.
    */
-  function gaussBlur1D_axis(src, w, h, sigma, horizontal) {
+  function centerBaseline(gw, gh) {
+    const out = new Float32Array(gw * gh);
+    const cx = gw / 2, cy = gh / 2;
+    const sx = gw / 4, sy = gh / 4;
+    for (let y = 0; y < gh; y++) {
+      const dy = (y + 0.5 - cy) / sy;
+      for (let x = 0; x < gw; x++) {
+        const dx = (x + 0.5 - cx) / sx;
+        out[y * gw + x] = Math.exp(-0.5 * (dx * dx + dy * dy));
+      }
+    }
+    return withSize(normalize(out), gw, gh);
+  }
+
+  /* ============================================================
+     Метрики
+     ============================================================ */
+
+  /**
+   * Подготовка карты салиентности к многократной оценке:
+   * среднее/σ для NSS, отсортированные значения для AUC,
+   * распределение для SIM/KL.
+   */
+  function prepareMap(sal) {
+    const N = sal.length;
+    let sum = 0;
+    for (let i = 0; i < N; i++) sum += sal[i];
+    const mean = sum / N;
+    let v = 0;
+    for (let i = 0; i < N; i++) { const d = sal[i] - mean; v += d * d; }
+    const std = Math.sqrt(v / N);
+    const sorted = Float32Array.from(sal).sort();   // по возрастанию
+    return { sal, mean, std, sorted, dist: toDistribution(sal) };
+  }
+
+  /** NSS: среднее z-значение салиентности в точках фиксаций (взвешенное при p.w ≠ 1). */
+  function computeNSS(prep, points) {
+    if (!points.length || prep.std === 0) return points.length ? 0 : NaN;
+    let total = 0, wsum = 0;
+    for (const p of points) {
+      total += p.w * (prep.sal[p.idx] - prep.mean) / prep.std;
+      wsum += p.w;
+    }
+    return total / wsum;
+  }
+
+  /**
+   * AUC-Judd. Пороги — значения салиентности в точках фиксаций.
+   * Для порога t:  TPR = доля фиксаций с S ≥ t,
+   *                FPR = доля НЕфиксированных пикселей с S ≥ t.
+   * Пиксели с одинаковым значением попадают под порог одновременно,
+   * поэтому плоская карта даёт ровно 0.5 (раньше порядок среди
+   * одинаковых значений искусственно ставил фиксации первыми, и
+   * постоянная карта получала AUC = 1.0).
+   * Каждая фиксация учитывается отдельно, даже если несколько
+   * попали в один пиксель.
+   */
+  function computeAUCJudd(prep, points) {
+    const N = prep.sal.length;
+    const nFix = points.length;
+    if (!nFix) return NaN;
+
+    const fixPix = new Map();          // пиксель → значение (уникальные фиксированные пиксели)
+    const fixVals = new Float64Array(nFix);
+    for (let i = 0; i < nFix; i++) {
+      const v = prep.sal[points[i].idx];
+      fixVals[i] = v;
+      fixPix.set(points[i].idx, v);
+    }
+    const nFixPix = fixPix.size;
+    const nNeg = N - nFixPix;
+    if (nNeg <= 0) return NaN;
+    const fixPixVals = Float64Array.from(fixPix.values()).sort();
+    fixVals.sort();
+
+    // Уникальные пороги по убыванию
+    const thresholds = [];
+    for (let i = nFix - 1; i >= 0; i--) {
+      if (!thresholds.length || fixVals[i] !== thresholds[thresholds.length - 1]) thresholds.push(fixVals[i]);
+    }
+
+    let auc = 0, prevTP = 0, prevFP = 0;
+    for (const t of thresholds) {
+      const tp = countGE(fixVals, t) / nFix;
+      const fp = Math.max(0, countGE(prep.sorted, t) - countGE(fixPixVals, t)) / nNeg;
+      auc += (fp - prevFP) * (tp + prevTP) / 2;
+      prevTP = tp; prevFP = fp;
+    }
+    auc += (1 - prevFP) * (1 + prevTP) / 2;
+    return auc;
+  }
+
+  /**
+   * Shuffled AUC (sAUC): негативы — не случайные пиксели, а места
+   * фиксаций на ДРУГИХ стимулах. Так центральный сдвиг и общие
+   * привычки просмотра перестают «помогать» модели: 0.5 — модель
+   * не предсказывает ничего сверх общих закономерностей.
+   * Считается точно, через статистику Манна — Уитни (равные значения — ½).
+   * negatives — массив индексов пикселей.
+   */
+  function computeSAUC(prep, points, negatives) {
+    if (!points.length || !negatives || negatives.length < 10) return NaN;
+    const pos = Float64Array.from(points, (p) => prep.sal[p.idx]).sort();
+    const neg = Float64Array.from(negatives, (i) => prep.sal[i]).sort();
+    let greater = 0, equal = 0;
+    let lo = 0, hi = 0;           // lo: число neg < v; hi: число neg ≤ v
+    for (let i = 0; i < pos.length; i++) {
+      const v = pos[i];
+      while (lo < neg.length && neg[lo] < v) lo++;
+      if (hi < lo) hi = lo;
+      while (hi < neg.length && neg[hi] <= v) hi++;
+      greater += lo;
+      equal += hi - lo;
+    }
+    return (greater + 0.5 * equal) / (pos.length * neg.length);
+  }
+
+  /** SIM: сумма поэлементных минимумов двух распределений (0 — нет пересечения, 1 — совпадают). */
+  function computeSIM(prep, fixDensity) {
+    const P = prep.dist, Q = fixDensity;
+    let s = 0;
+    for (let i = 0; i < P.length; i++) s += P[i] < Q[i] ? P[i] : Q[i];
+    return s;
+  }
+
+  /** KL-дивергенция KL(фиксации ‖ модель): 0 — совпадение, больше — хуже. */
+  function computeKL(prep, fixDensity) {
+    const P = prep.dist, Q = fixDensity;
+    let s = 0;
+    for (let i = 0; i < P.length; i++) {
+      if (Q[i] > 0) s += Q[i] * Math.log(EPS + Q[i] / (P[i] + EPS));
+    }
+    return s;
+  }
+
+  /** Полный набор метрик для одной карты. */
+  function evaluateMap(prep, points, fix, negatives) {
+    return {
+      cc:   pearsonR(prep.sal, fix.density),
+      nss:  computeNSS(prep, points),
+      auc:  computeAUCJudd(prep, points),
+      sauc: computeSAUC(prep, points, negatives),
+      sim:  computeSIM(prep, fix.density),
+      kl:   computeKL(prep, fix.density),
+    };
+  }
+
+  /* ============================================================
+     Верхний предел: согласованность между участниками
+     ============================================================ */
+
+  /**
+   * Split-half: участники случайно делятся пополам; карта одной
+   * половины «предсказывает» фиксации другой. Повторяется `reps` раз
+   * (и в обе стороны), результаты усредняются.
+   * Это оценка того, насколько вообще предсказуемы фиксации на этом
+   * стимуле: модель салиентности редко может быть лучше этого предела.
+   * Замечание: половина выборки даёт более шумную карту, чем вся
+   * выборка, поэтому предел слегка занижен.
+   * Нужно ≥ 2 участников; для устойчивой оценки — от 6–8.
+   */
+  function interObserverCeiling(points, gw, gh, frame, sigmaPx, reps = 10, seed = 12345) {
+    const byP = groupByParticipant(points);
+    const ids = [...byP.keys()];
+    if (ids.length < 2) return null;
+    const rnd = mulberry32(seed);
+    const acc = { cc: [], nss: [], auc: [], sim: [], kl: [] };
+
+    for (let r = 0; r < reps; r++) {
+      const order = ids.slice();
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(rnd() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      const half = Math.floor(order.length / 2);
+      const A = order.slice(0, half).flatMap((id) => byP.get(id));
+      const B = order.slice(half).flatMap((id) => byP.get(id));
+      for (const [pred, target] of [[A, B], [B, A]]) {
+        const predMap = buildFixationMap(pred, gw, gh, frame, sigmaPx);
+        const targetMap = buildFixationMap(target, gw, gh, frame, sigmaPx);
+        const prep = prepareMap(predMap.map);
+        acc.cc.push(pearsonR(predMap.density, targetMap.density));
+        acc.nss.push(computeNSS(prep, target));
+        acc.auc.push(computeAUCJudd(prep, target));
+        acc.sim.push(computeSIM(prep, targetMap.density));
+        acc.kl.push(computeKL(prep, targetMap.density));
+      }
+    }
+    const avg = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+    return {
+      cc: avg(acc.cc), nss: avg(acc.nss), auc: avg(acc.auc), sauc: NaN,
+      sim: avg(acc.sim), kl: avg(acc.kl),
+      nParticipants: ids.length, reps,
+    };
+  }
+
+  /* ============================================================
+     Метрики по участникам
+     ============================================================ */
+
+  /**
+   * NSS, AUC-Judd и CC отдельно для каждого участника + среднее
+   * и 95 % доверительный интервал по участникам. Именно участник —
+   * правильная единица наблюдения для статистики, а не фиксация.
+   */
+  function perParticipant(prep, points, gw, gh, frame, sigmaPx) {
+    const byP = groupByParticipant(points);
+    if (byP.size < 2) return null;
+    const rows = [];
+    for (const [id, pts] of byP) {
+      const fix = buildFixationMap(pts, gw, gh, frame, sigmaPx);
+      rows.push({
+        participant: id,
+        n: pts.length,
+        nss: computeNSS(prep, pts),
+        auc: computeAUCJudd(prep, pts),
+        cc: pearsonR(prep.sal, fix.density),
+      });
+    }
+    rows.sort((a, b) => String(a.participant).localeCompare(String(b.participant), 'ru', { numeric: true }));
+    return {
+      rows,
+      nss: meanCI95(rows.map((r) => r.nss)),
+      auc: meanCI95(rows.map((r) => r.auc)),
+      cc:  meanCI95(rows.map((r) => r.cc)),
+    };
+  }
+
+  /* ============================================================
+     Разностная карта
+     ============================================================ */
+
+  /**
+   * Разность нормированных карт (для визуализации) — где модель «промахивается».
+   * Положительные — салиентность переоценена, отрицательные — недооценена.
+   */
+  function differenceMap(salience, fixmap) {
+    const N = salience.length;
+    const out = new Float32Array(N);
+    for (let i = 0; i < N; i++) out[i] = salience[i] - fixmap[i];
+    return withSize(out, salience.width, salience.height);
+  }
+
+  /* ============================================================
+     Вспомогательное
+     ============================================================ */
+
+  function groupByParticipant(points) {
+    const m = new Map();
+    for (const p of points) {
+      const id = p.participant == null || p.participant === '' ? '(без ID)' : p.participant;
+      if (!m.has(id)) m.set(id, []);
+      m.get(id).push(p);
+    }
+    return m;
+  }
+
+  /** Число элементов отсортированного по возрастанию массива, ≥ t. */
+  function countGE(sorted, t) {
+    let lo = 0, hi = sorted.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (sorted[mid] < t) lo = mid + 1; else hi = mid;
+    }
+    return sorted.length - lo;
+  }
+
+  function toDistribution(map) {
+    let s = 0;
+    for (let i = 0; i < map.length; i++) s += map[i];
+    const out = new Float32Array(map.length);
+    if (s > 0) for (let i = 0; i < map.length; i++) out[i] = map[i] / s;
+    return out;
+  }
+
+  /** Детерминированный ГПСЧ — чтобы split-half давал одинаковый результат при повторе. */
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /** Анизотропная гауссова свёртка (разные σ по осям), нулевое дополнение на краях. */
+  function gaussBlur2DAniso(src, w, h, sigmaX, sigmaY) {
+    const tmp = gaussBlurAxis(src, w, h, sigmaX, true);
+    return gaussBlurAxis(tmp, w, h, sigmaY, false);
+  }
+
+  function gaussBlurAxis(src, w, h, sigma, horizontal) {
     if (sigma <= 0) return new Float32Array(src);
     const k = Math.max(3, 2 * Math.ceil(3 * sigma) + 1);
     const half = (k - 1) >> 1;
@@ -4578,9 +5586,8 @@ input[type="range"]::-moz-range-thumb {
     let sum = 0;
     for (let i = 0; i < k; i++) {
       const x = i - half;
-      const v = Math.exp(-(x * x) / s2);
-      kernel[i] = v;
-      sum += v;
+      kernel[i] = Math.exp(-(x * x) / s2);
+      sum += kernel[i];
     }
     for (let i = 0; i < k; i++) kernel[i] /= sum;
 
@@ -4590,217 +5597,37 @@ input[type="range"]::-moz-range-thumb {
         const row = y * w;
         for (let x = 0; x < w; x++) {
           let acc = 0;
-          for (let m = 0; m < k; m++) {
-            let xi = x + m - half;
-            if (xi < 0) xi = 0; else if (xi >= w) xi = w - 1;
-            acc += src[row + xi] * kernel[m];
-          }
+          const m0 = Math.max(0, half - x), m1 = Math.min(k, w - x + half);
+          for (let m = m0; m < m1; m++) acc += src[row + x + m - half] * kernel[m];
           out[row + x] = acc;
         }
       }
     } else {
       for (let y = 0; y < h; y++) {
-        const row = y * w;
+        const m0 = Math.max(0, half - y), m1 = Math.min(k, h - y + half);
         for (let x = 0; x < w; x++) {
           let acc = 0;
-          for (let m = 0; m < k; m++) {
-            let yi = y + m - half;
-            if (yi < 0) yi = 0; else if (yi >= h) yi = h - 1;
-            acc += src[yi * w + x] * kernel[m];
-          }
-          out[row + x] = acc;
+          for (let m = m0; m < m1; m++) acc += src[(y + m - half) * w + x] * kernel[m];
+          out[y * w + x] = acc;
         }
       }
     }
     return out;
   }
-
-  /**
-   * Построить fixation map по списку фиксаций.
-   *
-   * Алгоритм:
-   *   1. Создаём сетку 256×256.
-   *   2. Каждая фиксация — точка с весом = duration (или 1) в соответствующем пикселе сетки.
-   *   3. Размываем АНИЗОТРОПНЫМ гауссовым ядром: σx = σ_src · (TARGET/srcW), σy = σ_src · (TARGET/srcH).
-   *      Это эквивалентно изотропному размытию с σ_src в пикселях исходного кадра.
-   *   4. Нормируем в [0, 1].
-   *
-   * @param {Array<{x:number,y:number,duration:number}>} fixations
-   *        координаты в пикселях исходного кадра, x в [0, srcW), y в [0, srcH)
-   * @param {number} srcW — ширина исходного кадра (= ширина стимула в px на экране)
-   * @param {number} srcH — высота
-   * @param {number} sigmaSrc — σ ядра KDE в пикселях исходного кадра
-   *        (стандартно ≈ 1° угла зрения, что даёт ≈ 30 px при типичных условиях)
-   *
-   * @returns {Float32Array} TARGET·TARGET значений в [0, 1], нормированных,
-   *          с прикреплёнными свойствами rawMin/rawMax.
-   */
-  function buildFixationMap(fixations, srcW, srcH, sigmaSrc = 30) {
-    const map = new Float32Array(TARGET * TARGET);
-    if (srcW <= 0 || srcH <= 0) return normalize(map);
-
-    const sx = TARGET / srcW;
-    const sy = TARGET / srcH;
-
-    for (const f of fixations) {
-      const xi = Math.round(f.x * sx);
-      const yi = Math.round(f.y * sy);
-      if (xi < 0 || xi >= TARGET || yi < 0 || yi >= TARGET) continue;
-      map[yi * TARGET + xi] += f.duration > 0 ? f.duration : 1;
-    }
-
-    // Анизотропное σ: на сетке 256×256 ширина и высота имеют разный масштаб
-    // относительно исходного кадра, поэтому σ должно быть разным по осям —
-    // тогда размытие соответствует ИЗОТРОПНОМУ ядру в пиксельных координатах эксперимента.
-    const sigmaX = Math.max(0.5, sigmaSrc * sx);
-    const sigmaY = Math.max(0.5, sigmaSrc * sy);
-    const blurred = gaussBlur2DAniso(map, TARGET, TARGET, sigmaX, sigmaY);
-    return normalize(blurred);
-  }
-
-  /* ============================================================
-     Метрики соответствия моделей салиентности и фиксаций
-     ============================================================ */
-
-  /**
-   * Pearson r между двумя картами одинаковой длины.
-   * Линейная корреляция; диапазон [−1, +1].
-   */
-  function pearsonR(A, B) {
-    const N = A.length;
-    let sumA = 0, sumB = 0;
-    for (let i = 0; i < N; i++) { sumA += A[i]; sumB += B[i]; }
-    const muA = sumA / N, muB = sumB / N;
-    let num = 0, denA = 0, denB = 0;
-    for (let i = 0; i < N; i++) {
-      const da = A[i] - muA;
-      const db = B[i] - muB;
-      num  += da * db;
-      denA += da * da;
-      denB += db * db;
-    }
-    const den = Math.sqrt(denA * denB);
-    return den === 0 ? 0 : num / den;
-  }
-
-  /**
-   * NSS (Normalized Scanpath Saliency).
-   *
-   * 1) z-нормировать карту салиентности по всему изображению;
-   * 2) для каждой точки фиксации взять z-значение в её координате;
-   * 3) усреднить.
-   *
-   * NSS = 0  — модель не отличается от случайного предсказания.
-   * NSS > 0  — фиксации систематически попадают в зоны выше среднего.
-   * NSS > 1  — уверенное предсказание.
-   *
-   * @param {Array} fixations — координаты в пикселях исходного кадра
-   * @param {Float32Array} sal — карта салиентности TARGET×TARGET
-   * @param {number} srcW, srcH — размер исходного кадра
-   */
-  function computeNSS(fixations, sal, srcW, srcH) {
-    const N = sal.length;
-    // среднее и стандартное отклонение карты
-    let sum = 0;
-    for (let i = 0; i < N; i++) sum += sal[i];
-    const mean = sum / N;
-    let varSum = 0;
-    for (let i = 0; i < N; i++) {
-      const d = sal[i] - mean;
-      varSum += d * d;
-    }
-    const stdev = Math.sqrt(varSum / N);
-    if (stdev === 0) return 0;
-
-    const sx = TARGET / srcW;
-    const sy = TARGET / srcH;
-    let total = 0, count = 0;
-    for (const f of fixations) {
-      const xi = Math.round(f.x * sx);
-      const yi = Math.round(f.y * sy);
-      if (xi < 0 || xi >= TARGET || yi < 0 || yi >= TARGET) continue;
-      const z = (sal[yi * TARGET + xi] - mean) / stdev;
-      total += z;
-      count++;
-    }
-    return count > 0 ? total / count : 0;
-  }
-
-  /**
-   * AUC-Judd: salience рассматривается как бинарный классификатор фиксаций.
-   * Каждый порог t в карте даёт TPR (доля фиксаций попавших в зону выше t)
-   * и FPR (доля остальных пикселей выше t). Площадь под ROC-кривой и есть AUC.
-   *
-   * 0.5 — модель не лучше случайной.
-   * 0.7–0.8 — типичный диапазон классических моделей салиентности.
-   * 0.9+ — высокое соответствие (обычно требуется обучение под фиксации).
-   */
-  function computeAUCJudd(fixations, sal, srcW, srcH) {
-    const N = sal.length;
-
-    const isFix = new Uint8Array(N);
-    const sx = TARGET / srcW;
-    const sy = TARGET / srcH;
-    let nFix = 0;
-    for (const f of fixations) {
-      const xi = Math.round(f.x * sx);
-      const yi = Math.round(f.y * sy);
-      if (xi < 0 || xi >= TARGET || yi < 0 || yi >= TARGET) continue;
-      const idx = yi * TARGET + xi;
-      if (!isFix[idx]) { isFix[idx] = 1; nFix++; }
-    }
-    if (nFix === 0 || nFix === N) return 0.5;
-
-    // Сортируем индексы по убыванию saliency.
-    // Tie-break: при равных значениях сначала идут пиксели-фиксации.
-    // Без этого AUC систематически занижается на картах с плоскими участками
-    // (например, у Local Contrast — много нулевых значений).
-    const idxs = new Int32Array(N);
-    for (let i = 0; i < N; i++) idxs[i] = i;
-    // Int32Array.sort стабильна в современных движках, но сравнитель
-    // должен явно повышать isFix-пиксели при равенстве значений.
-    const arr = Array.from(idxs);
-    arr.sort((a, b) => (sal[b] - sal[a]) || (isFix[b] - isFix[a]));
-    for (let i = 0; i < N; i++) idxs[i] = arr[i];
-
-    const totalNeg = N - nFix;
-    let tp = 0, fp = 0;
-    let prevTPR = 0, prevFPR = 0;
-    let auc = 0;
-
-    for (let i = 0; i < N; i++) {
-      const k = idxs[i];
-      if (isFix[k]) tp++; else fp++;
-      const tpr = tp / nFix;
-      const fpr = fp / totalNeg;
-      // трапеция
-      auc += (fpr - prevFPR) * (tpr + prevTPR) * 0.5;
-      prevTPR = tpr;
-      prevFPR = fpr;
-    }
-    return auc;
-  }
-
-  /**
-   * Разностная карта (для визуализации) — где модель «промахивается».
-   * Возвращает Float32Array TARGET·TARGET со значениями в [-1, +1]:
-   * положительные — салиентность переоценена, отрицательные — недооценена.
-   */
-  function differenceMap(salience, fixmap) {
-    const N = salience.length;
-    const out = new Float32Array(N);
-    for (let i = 0; i < N; i++) {
-      out[i] = salience[i] - fixmap[i];
-    }
-    return out;
-  }
   // expose
+  window.mapFixations = mapFixations;
   window.buildFixationMap = buildFixationMap;
-  window.pearsonR = pearsonR;
+  window.centerBaseline = centerBaseline;
+  window.prepareMap = prepareMap;
   window.computeNSS = computeNSS;
   window.computeAUCJudd = computeAUCJudd;
+  window.computeSAUC = computeSAUC;
+  window.computeSIM = computeSIM;
+  window.computeKL = computeKL;
+  window.evaluateMap = evaluateMap;
+  window.interObserverCeiling = interObserverCeiling;
+  window.perParticipant = perParticipant;
   window.differenceMap = differenceMap;
-  window.TARGET = TARGET;
 })();
 
 /* ============= js/fixations-app.js ============= */
@@ -4819,35 +5646,44 @@ input[type="range"]::-moz-range-thumb {
      Состояние
      ============================================================ */
 
+  const ALL_STIMULI = '__all__';
+
   const state = {
     stim: null,           // {imageData, origImage, origW, origH, name, ...}
     csv: {
-      raw: null,
       parsed: null,
       mapping: null,
       stimuli: [],
       fileName: '',
-      coordsBounds: null,  // {minX, maxX, minY, maxY} по фиксациям
     },
     params: {
       method: 'ft',
       sigmaPx: 30,
       selectedStimulus: '',
-      frameW: null,        // null → возьмём из размера изображения
-      frameH: null,
+      frameMode: 'image',  // image | center | fit | manual
+      screenW: null,
+      screenH: null,
+      rect: { x0: 0, y0: 0, w: null, h: null },
+      norm: false,
+      weighted: false,
     },
-    result: null,         // {sal, fixmap, diff, metrics}
+    frameTouched: false,  // пользователь сам менял режим кадра — не переключать автоматически
+    result: null,
+    batch: { images: [], rows: [], summary: null },
     busy: false,
   };
 
   const dom = {};
 
-  const METHOD_HINTS = {
-    ft:    'цветовая салиентность через CIE Lab',
-    dog:   'многомасштабный контраст яркости',
-    local: 'быстрый локальный контраст',
-    sr:    'спектральный остаток',
-  };
+  /** Метрики соответствия: ключ, подпись, «больше — лучше?», формат. */
+  const EVAL_KEYS = [
+    ['cc',   'CC (Pearson r)', true],
+    ['nss',  'NSS',            true],
+    ['auc',  'AUC-Judd',       true],
+    ['sauc', 'sAUC',           true],
+    ['sim',  'SIM',            true],
+    ['kl',   'KL',             false],
+  ];
 
   /* ============================================================
      Инициализация
@@ -4861,33 +5697,56 @@ input[type="range"]::-moz-range-thumb {
   });
 
   function cacheDom() {
-    dom.stimDz       = document.getElementById('stim-dropzone');
-    dom.stimFile     = document.getElementById('stim-file');
-    dom.stimPick     = document.getElementById('stim-pick');
-    dom.stimInfo     = document.getElementById('stim-info');
+    const $ = (id) => document.getElementById(id);
+    dom.stimDz = $('stim-dropzone');
+    dom.stimFile = $('stim-file');
+    dom.stimPick = $('stim-pick');
+    dom.stimInfo = $('stim-info');
 
-    dom.csvDz        = document.getElementById('csv-dropzone');
-    dom.csvFile      = document.getElementById('csv-file');
-    dom.csvPick      = document.getElementById('csv-pick');
-    dom.csvInfo      = document.getElementById('csv-info');
+    dom.csvDz = $('csv-dropzone');
+    dom.csvFile = $('csv-file');
+    dom.csvPick = $('csv-pick');
+    dom.csvInfo = $('csv-info');
 
-    dom.params       = document.getElementById('params');
-    dom.method       = document.getElementById('param-method');
-    dom.sigma        = document.getElementById('param-sigma');
-    dom.sigmaVal     = document.getElementById('param-sigma-val');
-    dom.stimFilter   = document.getElementById('param-stim-filter');
-    dom.frameW       = document.getElementById('frame-w');
-    dom.frameH       = document.getElementById('frame-h');
-    dom.frameReset   = document.getElementById('frame-reset');
-    dom.frameHint    = document.getElementById('frame-hint');
-    dom.runBtn       = document.getElementById('run-btn');
+    dom.params = $('params');
+    dom.method = $('param-method');
+    dom.sigma = $('param-sigma');
+    dom.sigmaVal = $('param-sigma-val');
+    dom.stimFilter = $('param-stim-filter');
+    dom.colGrid = $('col-grid');
+    dom.colSummary = $('col-summary');
+    dom.frameMode = $('frame-mode');
+    dom.screenW = $('screen-w');
+    dom.screenH = $('screen-h');
+    dom.rectX = $('rect-x');
+    dom.rectY = $('rect-y');
+    dom.rectW = $('rect-w');
+    dom.rectH = $('rect-h');
+    dom.norm = $('coords-norm');
+    dom.weighted = $('opt-duration');
+    dom.frameHint = $('frame-hint');
+    dom.frameGroups = document.querySelectorAll('.frame-group[data-modes]');
+    dom.runBtn = $('run-btn');
 
-    dom.results      = document.getElementById('results');
-    dom.busy         = document.getElementById('busy');
-    dom.metricsBox   = document.getElementById('eval-metrics');
-    dom.stageRow     = document.getElementById('stage-row');
-    dom.dlCsv        = document.getElementById('dl-csv');
-    dom.dlZip        = document.getElementById('dl-zip');
+    dom.results = $('results');
+    dom.busy = $('busy');
+    dom.metricsBox = $('eval-metrics');
+    dom.benchTable = $('bench-table');
+    dom.benchNote = $('bench-note');
+    dom.ppBlock = $('pp-block');
+    dom.ppTable = $('pp-table');
+    dom.stageRow = $('stage-row');
+    dom.dlCsv = $('dl-csv');
+    dom.dlZip = $('dl-zip');
+
+    dom.batch = $('batch');
+    dom.batchFiles = $('batch-files');
+    dom.batchPick = $('batch-pick');
+    dom.batchInfo = $('batch-info');
+    dom.batchRun = $('batch-run');
+    dom.batchResults = $('batch-results');
+    dom.batchTable = $('batch-table');
+    dom.batchDl = $('batch-dl');
   }
 
   function bindEvents() {
@@ -4916,43 +5775,57 @@ input[type="range"]::-moz-range-thumb {
     bindDrop(dom.csvDz, (files) => { if (files[0]) handleCsv(files[0]); });
 
     // ---- параметры ----
-    dom.method.addEventListener('change', () => {
-      state.params.method = dom.method.value;
-    });
+    dom.method.addEventListener('change', () => { state.params.method = dom.method.value; });
     dom.sigma.addEventListener('input', () => {
       state.params.sigmaPx = +dom.sigma.value;
       dom.sigmaVal.textContent = state.params.sigmaPx;
     });
     dom.stimFilter.addEventListener('change', () => {
       state.params.selectedStimulus = dom.stimFilter.value;
-      renderCsvInfo();
-      updateFrameHint();
+      onFixationsChanged();
     });
 
-    // ---- размер кадра ----
-    dom.frameW.addEventListener('input', () => {
-      const v = parseInt(dom.frameW.value, 10);
-      state.params.frameW = isFinite(v) && v > 0 ? v : null;
+    // ---- кадр ----
+    dom.frameMode.addEventListener('change', () => {
+      state.params.frameMode = dom.frameMode.value;
+      state.frameTouched = true;
+      if (state.params.frameMode === 'manual' && state.params.rect.w == null) fillManualFromCurrent();
+      renderFrameFields();
       updateFrameHint();
     });
-    dom.frameH.addEventListener('input', () => {
-      const v = parseInt(dom.frameH.value, 10);
-      state.params.frameH = isFinite(v) && v > 0 ? v : null;
+    const numInput = (el, fn) => el.addEventListener('input', () => {
+      const v = parseFloat(el.value);
+      fn(isFinite(v) ? v : null);
+      state.frameTouched = true;
       updateFrameHint();
     });
-    dom.frameReset.addEventListener('click', () => {
-      if (!state.stim) return;
-      state.params.frameW = state.stim.origW;
-      state.params.frameH = state.stim.origH;
-      dom.frameW.value = state.stim.origW;
-      dom.frameH.value = state.stim.origH;
+    numInput(dom.screenW, (v) => { state.params.screenW = v > 0 ? v : null; });
+    numInput(dom.screenH, (v) => { state.params.screenH = v > 0 ? v : null; });
+    numInput(dom.rectX, (v) => { state.params.rect.x0 = v ?? 0; });
+    numInput(dom.rectY, (v) => { state.params.rect.y0 = v ?? 0; });
+    numInput(dom.rectW, (v) => { state.params.rect.w = v > 0 ? v : null; });
+    numInput(dom.rectH, (v) => { state.params.rect.h = v > 0 ? v : null; });
+    dom.norm.addEventListener('change', () => {
+      state.params.norm = dom.norm.checked;
+      renderFrameFields();
       updateFrameHint();
     });
+    dom.weighted.addEventListener('change', () => { state.params.weighted = dom.weighted.checked; });
 
     // ---- кнопки ----
     dom.runBtn.addEventListener('click', runComparison);
     dom.dlCsv.addEventListener('click', exportCsvReport);
     dom.dlZip.addEventListener('click', exportZipMaps);
+
+    // ---- пакет ----
+    dom.batchPick.addEventListener('click', () => dom.batchFiles.click());
+    dom.batchFiles.addEventListener('change', () => {
+      const files = [...(dom.batchFiles.files || [])];
+      if (files.length) handleBatchImages(files);
+      dom.batchFiles.value = '';
+    });
+    dom.batchRun.addEventListener('click', runBatch);
+    dom.batchDl.addEventListener('click', exportBatchCsv);
   }
 
   function bindDrop(zone, onFiles) {
@@ -4976,12 +5849,15 @@ input[type="range"]::-moz-range-thumb {
   async function handleStimulus(file) {
     try {
       state.stim = await loadImageFile(file);
-      // По умолчанию — размер кадра = размеру изображения. Пользователь может переопределить.
-      if (state.params.frameW == null) state.params.frameW = state.stim.origW;
-      if (state.params.frameH == null) state.params.frameH = state.stim.origH;
-      if (dom.frameW) dom.frameW.value = state.params.frameW;
-      if (dom.frameH) dom.frameH.value = state.params.frameH;
+      // Если в CSV есть стимул с таким же именем — выбрать его автоматически
+      if (state.csv.stimuli.length) {
+        const m = matchStimulus(state.csv.stimuli, state.stim.name);
+        if (m) state.params.selectedStimulus = m;
+        renderStimulusFilter();
+      }
+      autoFrame();
       renderStimInfo();
+      renderCsvInfo();
       updateFrameHint();
       updateRunButton();
     } catch (err) {
@@ -5018,10 +5894,10 @@ input[type="range"]::-moz-range-thumb {
 
   async function handleCsv(file) {
     try {
-      if (file.size > 50 * 1024 * 1024) {
+      if (file.size > 200 * 1024 * 1024) {
         toastError(
           `Файл ${file.name} слишком большой (${(file.size / 1024 / 1024).toFixed(1)} МБ). ` +
-          `Ожидается CSV с фиксациями — обычно меньше 10 МБ. Возможно, это не тот файл.`
+          `Сохраните из пакета айтрекера только нужные колонки или только события-фиксации.`
         );
         return;
       }
@@ -5041,72 +5917,81 @@ input[type="range"]::-moz-range-thumb {
         return;
       }
 
-      const mapping = detectColumns(parsed.columns);
-
-      if (!mapping.x || !mapping.y) {
-        const sample = parsed.columns.slice(0, 12).join(', ');
-        toastError(
-          `В CSV не нашлись колонки координат (ожидаются x_px / y_px или x / y). ` +
-          `Найдены колонки: ${sample}${parsed.columns.length > 12 ? '…' : ''}. ` +
-          `Переименуйте нужные колонки в исходном файле и загрузите повторно.`,
-          9000
-        );
-        return;
-      }
-
-      state.csv.raw = text;
       state.csv.parsed = parsed;
-      state.csv.mapping = mapping;
-      state.csv.stimuli = uniqueStimuli(parsed.rows, mapping);
+      state.csv.mapping = detectColumns(parsed.columns);
       state.csv.fileName = file.name;
-      state.params.selectedStimulus = state.csv.stimuli.length === 1
-        ? state.csv.stimuli[0]
-        : '';
 
-      // Если изображение ещё не загружено — авто-предложить размер кадра по координатам
-      if (!state.stim) {
-        const bounds = getCoordsBounds();
-        if (bounds) {
-          const guessW = roundUpToCommon(Math.ceil(bounds.maxX));
-          const guessH = roundUpToCommon(Math.ceil(bounds.maxY));
-          if (state.params.frameW == null) {
-            state.params.frameW = guessW;
-            if (dom.frameW) dom.frameW.value = guessW;
-          }
-          if (state.params.frameH == null) {
-            state.params.frameH = guessH;
-            if (dom.frameH) dom.frameH.value = guessH;
-          }
-        }
-      }
-
-      const fixCount = countFixations();
-      if (fixCount === 0) {
+      if (!state.csv.mapping.x || !state.csv.mapping.y) {
         toastInfo(
-          `CSV распознан, но после фильтрации не осталось фиксаций. ` +
-          `Проверьте: тип события (type=fixation) и/или выбор стимула в параметрах.`,
-          7000
+          'Не удалось уверенно найти колонки координат. Выберите X и Y вручную в блоке «Столбцы CSV».',
+          8000
         );
-      } else {
-        toastSuccess(`CSV распознан · ${fixCount} фиксаций`);
+        dom.params.hidden = false;
+        document.getElementById('col-block').open = true;
       }
 
-      renderCsvInfo();
-      renderStimulusFilter();
-      updateFrameHint();
-      updateRunButton();
+      onMappingChanged(true);
+
+      const n = countFixations();
+      if (n === 0) {
+        toastInfo('CSV распознан, но после фильтрации не осталось фиксаций. Проверьте столбцы и выбор стимула.', 7000);
+      } else {
+        toastSuccess(`CSV распознан · ${n} фиксаци${pluralFix(n)}`);
+      }
     } catch (err) {
       toastError(err.message || String(err));
     }
   }
 
-  /** Подсказать «обычный» размер монитора по верхней координате. */
-  function roundUpToCommon(v) {
-    const common = [800, 1024, 1280, 1366, 1440, 1600, 1680, 1920, 2048, 2560, 3840,
-                    600, 720, 768, 800, 900, 1050, 1080, 1200, 1440, 1600, 2160];
-    const sorted = common.filter((c) => c >= v).sort((a, b) => a - b);
-    if (sorted.length) return sorted[0];
-    return Math.ceil(v / 100) * 100;
+  /** Пересчитать всё, что зависит от сопоставления колонок. */
+  function onMappingChanged(fresh = false) {
+    const { parsed, mapping } = state.csv;
+    state.csv.stimuli = uniqueStimuli(parsed.rows, mapping);
+    const stimuli = state.csv.stimuli;
+
+    if (fresh || (state.params.selectedStimulus && state.params.selectedStimulus !== ALL_STIMULI
+        && !stimuli.includes(state.params.selectedStimulus))) {
+      const m = state.stim ? matchStimulus(stimuli, state.stim.name) : null;
+      state.params.selectedStimulus = m || (stimuli.length === 1 ? stimuli[0] : '');
+    }
+
+    // Координаты в долях 0–1? Включаем автоматически при первом разборе
+    if (fresh) {
+      const b = getCoordsBounds(true);
+      state.params.norm = !!b && b.maxX <= 1.0001 && b.maxY <= 1.0001 && b.minX >= -0.01 && b.minY >= -0.01;
+      dom.norm.checked = state.params.norm;
+    }
+
+    renderColumnMapping();
+    renderStimulusFilter();
+    onFixationsChanged();
+  }
+
+  function onFixationsChanged() {
+    autoFrame();
+    renderCsvInfo();
+    updateFrameHint();
+    updateRunButton();
+    renderBatchInfo();
+  }
+
+  function renderColumnMapping() {
+    const { parsed, mapping } = state.csv;
+    if (!parsed) return;
+    const opts = (sel) => ['<option value="">—</option>']
+      .concat(parsed.columns.map((c) => `<option value="${escapeAttr(c)}"${c === sel ? ' selected' : ''}>${escapeHtml(c)}</option>`))
+      .join('');
+    dom.colGrid.innerHTML = COLUMN_ROLES.map(([role, label]) => `
+      <label>${escapeHtml(label)}
+        <select data-role="${role}">${opts(mapping[role])}</select>
+      </label>`).join('');
+    dom.colGrid.querySelectorAll('select[data-role]').forEach((sel) => {
+      sel.addEventListener('change', () => {
+        state.csv.mapping[sel.dataset.role] = sel.value || null;
+        onMappingChanged(false);
+      });
+    });
+    dom.colSummary.textContent = `x = ${mapping.x || '?'} · y = ${mapping.y || '?'}`;
   }
 
   function renderCsvInfo() {
@@ -5115,9 +6000,9 @@ input[type="range"]::-moz-range-thumb {
       dom.csvInfo.hidden = true;
       return;
     }
-
-    // Сколько фиксаций при текущих настройках
-    const fixCount = countFixations();
+    const fixs = currentFixations();
+    const fixCount = fixs.length;
+    const dup = fixs.duplicatesRemoved || 0;
 
     dom.csvInfo.hidden = false;
     dom.csvInfo.innerHTML = `
@@ -5125,7 +6010,7 @@ input[type="range"]::-moz-range-thumb {
       <span class="upload-name">${escapeHtml(fileName)}</span>
       <span class="upload-meta">
         ${parsed.rows.length} строк · ${stimuli.length || '—'} стимул${pluralStim(stimuli.length)} ·
-        ${fixCount} фиксаци${pluralFix(fixCount)}
+        ${fixCount} фиксаци${pluralFix(fixCount)}${dup ? ` · убрано повторов: ${dup}` : ''}
       </span>
       <button class="upload-replace" data-act="replace-csv" type="button">↻ заменить</button>
       <div class="upload-mapping">
@@ -5134,52 +6019,94 @@ input[type="range"]::-moz-range-thumb {
         y = <code>${escapeHtml(mapping.y || '?')}</code> ·
         type = <code>${escapeHtml(mapping.type || '—')}</code> ·
         duration = <code>${escapeHtml(mapping.duration || '—')}</code> ·
-        participant = <code>${escapeHtml(mapping.participant || '—')}</code>
+        participant = <code>${escapeHtml(mapping.participant || '—')}</code> ·
+        stimulus = <code>${escapeHtml(mapping.stimulus || '—')}</code> ·
+        № фиксации = <code>${escapeHtml(mapping.fixIndex || '—')}</code>
       </div>
     `;
     dom.csvInfo.querySelector('[data-act="replace-csv"]').addEventListener('click', () => {
-      state.csv = { raw: null, parsed: null, mapping: null, stimuli: [], fileName: '' };
+      state.csv = { parsed: null, mapping: null, stimuli: [], fileName: '' };
       state.result = null;
       renderCsvInfo();
       renderStimulusFilter();
       hideResults();
       updateRunButton();
+      renderBatchInfo();
       dom.csvFile.value = '';
     });
   }
 
   function renderStimulusFilter() {
     const list = state.csv.stimuli;
-    if (!list.length) {
-      dom.stimFilter.innerHTML = '<option value="">— нет данных —</option>';
+    if (!state.csv.parsed || !list.length) {
+      dom.stimFilter.innerHTML = state.csv.parsed
+        ? '<option value="">все фиксации (колонки стимула нет)</option>'
+        : '<option value="">— нет данных —</option>';
       return;
     }
+    const sel = state.params.selectedStimulus;
     let html = '';
-    if (list.length > 1) html += '<option value="">все фиксации в файле</option>';
+    if (list.length > 1) {
+      html += `<option value=""${!sel ? ' selected' : ''}>— выберите стимул —</option>`;
+    }
     for (const s of list) {
-      const sel = s === state.params.selectedStimulus ? ' selected' : '';
-      html += `<option value="${escapeAttr(s)}"${sel}>${escapeHtml(s)}</option>`;
+      html += `<option value="${escapeAttr(s)}"${s === sel ? ' selected' : ''}>${escapeHtml(s)}</option>`;
+    }
+    if (list.length > 1) {
+      html += `<option value="${ALL_STIMULI}"${sel === ALL_STIMULI ? ' selected' : ''}>все стимулы вместе (обычно ошибка)</option>`;
     }
     dom.stimFilter.innerHTML = html;
   }
 
-  function countFixations() {
-    if (!state.csv.parsed || !state.csv.mapping) return 0;
-    return extractFixations(
-      state.csv.parsed.rows,
-      state.csv.mapping,
-      { stimulus: state.params.selectedStimulus || null }
-    ).length;
+  /** Нужен ли явный выбор стимула (в CSV несколько, а выбран не один). */
+  function stimulusChoiceMissing() {
+    return state.csv.stimuli.length > 1 && !state.params.selectedStimulus;
   }
 
-  /** Границы координат фиксаций — для подсказки про размер кадра. */
-  function getCoordsBounds() {
+  /* ============================================================
+     Фиксации и кадр
+     ============================================================ */
+
+  /** Фиксации выбранного стимула (сырые координаты, с учётом долей 0–1). */
+  function currentFixations() {
+    const sel = state.params.selectedStimulus;
+    const stimulus = sel && sel !== ALL_STIMULI ? sel : null;
+    return fixationsFor(stimulus, state.stim);
+  }
+
+  function fixationsFor(stimulus, img) {
+    const { parsed, mapping } = state.csv;
+    if (!parsed || !mapping || !mapping.x || !mapping.y) return Object.assign([], { duplicatesRemoved: 0 });
+    const fixs = extractFixations(parsed.rows, mapping, { stimulus });
+    if (state.params.norm) {
+      const ref = normRef(img);
+      if (ref) for (const f of fixs) { f.x *= ref.w; f.y *= ref.h; }
+    }
+    return fixs;
+  }
+
+  /** Опорный размер для координат в долях 0–1. */
+  function normRef(img) {
+    if (state.params.frameMode === 'image') return img ? { w: img.origW, h: img.origH } : null;
+    const { screenW, screenH } = state.params;
+    return screenW && screenH ? { w: screenW, h: screenH } : null;
+  }
+
+  function countFixations() {
+    return currentFixations().length;
+  }
+
+  /** Границы координат. raw=true — без пересчёта долей в пиксели. */
+  function getCoordsBounds(raw = false) {
     if (!state.csv.parsed) return null;
-    const fixs = extractFixations(
-      state.csv.parsed.rows,
-      state.csv.mapping,
-      { stimulus: state.params.selectedStimulus || null }
-    );
+    let fixs;
+    if (raw) {
+      const { parsed, mapping } = state.csv;
+      if (!mapping.x || !mapping.y) return null;
+      fixs = extractFixations(parsed.rows, mapping, {});
+    } else {
+      fixs = currentFixations();
+    }
     if (!fixs.length) return null;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const f of fixs) {
@@ -5191,47 +6118,156 @@ input[type="range"]::-moz-range-thumb {
     return { minX, maxX, minY, maxY };
   }
 
-  /** Подсказка под полями размера кадра — соотносит размер с координатами. */
+  /**
+   * Прямоугольник стимула в координатах айтрекера.
+   * Возвращает {x0, y0, w, h} или null, если параметров не хватает.
+   */
+  function frameFor(img) {
+    if (!img) return null;
+    const { frameMode, screenW, screenH, rect } = state.params;
+    const iw = img.origW, ih = img.origH;
+    if (frameMode === 'image') return { x0: 0, y0: 0, w: iw, h: ih };
+    if (frameMode === 'manual') {
+      return rect.w && rect.h ? { x0: rect.x0 || 0, y0: rect.y0 || 0, w: rect.w, h: rect.h } : null;
+    }
+    if (!screenW || !screenH) return null;
+    if (frameMode === 'center') {
+      return { x0: (screenW - iw) / 2, y0: (screenH - ih) / 2, w: iw, h: ih };
+    }
+    // fit
+    const k = Math.min(screenW / iw, screenH / ih);
+    const w = iw * k, h = ih * k;
+    return { x0: (screenW - w) / 2, y0: (screenH - h) / 2, w, h };
+  }
+
+  /**
+   * Автоматическая догадка о кадре — только пока пользователь сам
+   * ничего не менял. Если координаты заметно выходят за размер
+   * изображения, это почти наверняка координаты экрана: предлагаем
+   * «стимул по центру экрана» с угаданным размером экрана.
+   */
+  function autoFrame() {
+    if (state.frameTouched || !state.csv.parsed) { renderFrameFields(); return; }
+    const b = getCoordsBounds(true);
+    if (!b) { renderFrameFields(); return; }
+    if (!state.params.norm) {
+      const guess = guessScreen(b);
+      state.params.screenW = guess.w;
+      state.params.screenH = guess.h;
+    } else {
+      if (!state.params.screenW) state.params.screenW = 1920;
+      if (!state.params.screenH) state.params.screenH = 1080;
+    }
+    if (state.params.norm) {
+      // Доли 0–1 обычно отсчитываются от экрана; по умолчанию считаем, что стимул на весь экран
+      state.params.frameMode = 'fit';
+    } else if (state.stim) {
+      const over = b.maxX > state.stim.origW * 1.05 || b.maxY > state.stim.origH * 1.05;
+      state.params.frameMode = over ? 'center' : 'image';
+    }
+    renderFrameFields();
+  }
+
+  function fillManualFromCurrent() {
+    const f = frameFor(state.stim) || (state.stim ? { x0: 0, y0: 0, w: state.stim.origW, h: state.stim.origH } : null);
+    if (!f) return;
+    state.params.rect = { x0: Math.round(f.x0), y0: Math.round(f.y0), w: Math.round(f.w), h: Math.round(f.h) };
+  }
+
+  /** Распространённые разрешения экрана — в порядке распространённости. */
+  const SCREENS = [
+    [1920, 1080], [1920, 1200], [2560, 1440], [1680, 1050], [1600, 900], [1440, 900],
+    [1366, 768], [1280, 1024], [1280, 800], [1280, 720], [1024, 768], [3840, 2160],
+    [2560, 1600], [3440, 1440], [800, 600],
+  ];
+
+  /**
+   * Угадать размер экрана. Кандидаты — стандартные разрешения, в которые
+   * укладываются координаты. Если изображение уже загружено, выбирается
+   * разрешение, при котором стимул по центру экрана накрывает больше всего
+   * фиксаций (максимальная координата сама по себе ненадёжна: при стимуле
+   * по центру взгляд до края экрана обычно не доходит).
+   */
+  function guessScreen(b) {
+    const fits = SCREENS.filter(([w, h]) => w >= b.maxX * 0.98 && h >= b.maxY * 0.98);
+    if (!fits.length) return { w: Math.ceil(b.maxX / 10) * 10, h: Math.ceil(b.maxY / 10) * 10 };
+    if (!state.stim) return { w: fits[0][0], h: fits[0][1] };
+    const fixs = currentFixations();
+    const iw = state.stim.origW, ih = state.stim.origH;
+    let best = fits[0], bestShare = -1;
+    for (const [w, h] of fits) {
+      const x0 = (w - iw) / 2, y0 = (h - ih) / 2;
+      let inside = 0;
+      for (const f of fixs) if (f.x >= x0 && f.x < x0 + iw && f.y >= y0 && f.y < y0 + ih) inside++;
+      const share = fixs.length ? inside / fixs.length : 0;
+      if (share > bestShare + 0.01) { best = [w, h]; bestShare = share; }
+    }
+    return { w: best[0], h: best[1] };
+  }
+
+  function renderFrameFields() {
+    const p = state.params;
+    dom.frameMode.value = p.frameMode;
+    dom.frameGroups.forEach((g) => {
+      const modes = g.dataset.modes.split(' ');
+      g.hidden = !(modes.includes(p.frameMode) || (p.norm && modes.includes('norm') && p.frameMode !== 'image'));
+    });
+    setVal(dom.screenW, p.screenW);
+    setVal(dom.screenH, p.screenH);
+    setVal(dom.rectX, p.rect.x0);
+    setVal(dom.rectY, p.rect.y0);
+    setVal(dom.rectW, p.rect.w);
+    setVal(dom.rectH, p.rect.h);
+    dom.norm.checked = p.norm;
+  }
+
+  function setVal(el, v) {
+    if (document.activeElement === el) return;
+    el.value = v == null ? '' : Math.round(v * 100) / 100;
+  }
+
+  /** Подсказка: сколько фиксаций попадает в прямоугольник стимула. */
   function updateFrameHint() {
     if (!dom.frameHint) return;
-    if (!state.csv.parsed) {
-      dom.frameHint.textContent = '';
-      return;
-    }
-    const bounds = getCoordsBounds();
-    if (!bounds) { dom.frameHint.textContent = ''; return; }
-
-    const fw = state.params.frameW;
-    const fh = state.params.frameH;
-    const maxX = Math.round(bounds.maxX);
-    const maxY = Math.round(bounds.maxY);
-
-    if (!fw || !fh) {
-      dom.frameHint.innerHTML = `координаты до <strong>${maxX} × ${maxY}</strong>`;
+    if (!state.csv.parsed) { dom.frameHint.textContent = ''; return; }
+    const fixs = currentFixations();
+    if (!fixs.length) { dom.frameHint.textContent = ''; return; }
+    const frame = frameFor(state.stim);
+    if (!state.stim) {
+      const b = getCoordsBounds();
       dom.frameHint.className = 'frame-hint';
+      dom.frameHint.innerHTML = b ? `координаты до <strong>${Math.round(b.maxX)} × ${Math.round(b.maxY)}</strong> · загрузите стимул` : '';
       return;
     }
-
-    const xOverflow = maxX > fw * 1.02;
-    const yOverflow = maxY > fh * 1.02;
-    if (xOverflow || yOverflow) {
-      dom.frameHint.innerHTML = `⚠ координаты до <strong>${maxX} × ${maxY}</strong> — превышают кадр ${fw} × ${fh}`;
+    if (!frame) {
       dom.frameHint.className = 'frame-hint frame-hint-warn';
-    } else {
-      dom.frameHint.innerHTML = `координаты до <strong>${maxX} × ${maxY}</strong> — укладываются в кадр ${fw} × ${fh}`;
-      dom.frameHint.className = 'frame-hint frame-hint-ok';
+      dom.frameHint.textContent = '⚠ укажите размер экрана или прямоугольник стимула';
+      return;
     }
+    let inside = 0;
+    for (const f of fixs) {
+      const u = (f.x - frame.x0) / frame.w, v = (f.y - frame.y0) / frame.h;
+      if (u >= 0 && u < 1 && v >= 0 && v < 1) inside++;
+    }
+    const share = inside / fixs.length;
+    const rect = `стимул: x ${Math.round(frame.x0)}…${Math.round(frame.x0 + frame.w)}, y ${Math.round(frame.y0)}…${Math.round(frame.y0 + frame.h)}`;
+    dom.frameHint.className = share < 0.8 ? 'frame-hint frame-hint-warn' : 'frame-hint frame-hint-ok';
+    dom.frameHint.innerHTML = `${share < 0.8 ? '⚠ ' : ''}${rect} · в стимул попадает <strong>${inside} из ${fixs.length}</strong> фиксаций (${Math.round(share * 100)} %)`;
   }
 
   function renderParams() {
     dom.method.value = state.params.method;
     dom.sigma.value = state.params.sigmaPx;
     dom.sigmaVal.textContent = state.params.sigmaPx;
+    dom.weighted.checked = state.params.weighted;
+    renderFrameFields();
   }
 
   function updateRunButton() {
-    const ready = !!state.stim && !!state.csv.parsed;
+    const ready = !!state.stim && !!state.csv.parsed && !!state.csv.mapping?.x && !!state.csv.mapping?.y
+      && !stimulusChoiceMissing();
     dom.runBtn.disabled = !ready;
+    dom.runBtn.title = stimulusChoiceMissing() ? 'В CSV несколько стимулов — выберите, какой соответствует изображению' : '';
     dom.params.hidden = !state.csv.parsed;
   }
 
@@ -5239,86 +6275,108 @@ input[type="range"]::-moz-range-thumb {
      Главный расчёт
      ============================================================ */
 
+  /**
+   * Все метрики для одного стимула.
+   * img — загруженное изображение; fixations — фиксации этого стимула;
+   * negUV — [{u, v}] фиксации на других стимулах (для sAUC) или null.
+   */
+  function analyzeStimulus(img, fixations, negUV, withDetails = true) {
+    const frame = frameFor(img);
+    if (!frame) throw new Error('Не задано положение стимула: укажите размер экрана или прямоугольник.');
+    const { method, sigmaPx, weighted } = state.params;
+
+    const sal = computeSaliency(img.imageData, method);
+    const gw = sal.width, gh = sal.height;
+    const { points, outside } = mapFixations(fixations, frame, gw, gh, weighted);
+    if (!points.length) {
+      throw new Error(`Ни одна из ${fixations.length} фиксаций не попала в прямоугольник стимула. Проверьте положение стимула на экране.`);
+    }
+
+    const fix = buildFixationMap(points, gw, gh, frame, sigmaPx);
+    const negatives = negUV && negUV.length
+      ? negUV.map(({ u, v }) => Math.min(gh - 1, Math.floor(v * gh)) * gw + Math.min(gw - 1, Math.floor(u * gw)))
+      : null;
+
+    const prep = prepareMap(sal);
+    const model = evaluateMap(prep, points, fix, negatives);
+    const center = evaluateMap(prepareMap(centerBaseline(gw, gh)), points, fix, negatives);
+    const ceiling = interObserverCeiling(points, gw, gh, frame, sigmaPx);
+    const pp = withDetails ? perParticipant(prep, points, gw, gh, frame, sigmaPx) : null;
+
+    return {
+      sal, fixmap: fix.map, diff: withDetails ? differenceMap(sal, fix.map) : null,
+      frame, points,
+      nFixations: points.length,
+      nOutside: outside,
+      nParticipants: countParticipants(points),
+      nNegatives: negatives ? negatives.length : 0,
+      model, center, ceiling, pp,
+    };
+  }
+
+  /** Фиксации других стимулов в относительных координатах текущего кадра (для sAUC). */
+  function negativesForSingle(frame) {
+    const { stimuli } = state.csv;
+    const sel = state.params.selectedStimulus;
+    if (!state.csv.mapping.stimulus || stimuli.length < 2 || !sel || sel === ALL_STIMULI) return null;
+    const out = [];
+    for (const s of stimuli) {
+      if (s === sel) continue;
+      for (const f of fixationsFor(s, state.stim)) {
+        const u = (f.x - frame.x0) / frame.w, v = (f.y - frame.y0) / frame.h;
+        if (u >= 0 && u < 1 && v >= 0 && v < 1) out.push({ u, v });
+      }
+    }
+    return out;
+  }
+
   async function runComparison() {
     if (!state.stim || !state.csv.parsed) return;
+    if (stimulusChoiceMissing()) {
+      toastError('В CSV несколько стимулов — выберите нужный в поле «Стимул в CSV».');
+      return;
+    }
 
-    setBusy(true, 'Считаем салиентность…');
-    await new Promise((r) => setTimeout(r, 0));
+    dom.results.hidden = false;
+    setBusy(true, 'Считаем салиентность и метрики…');
+    await new Promise((r) => setTimeout(r, 30));
 
     try {
-      const fixations = extractFixations(
-        state.csv.parsed.rows,
-        state.csv.mapping,
-        { stimulus: state.params.selectedStimulus || null }
-      );
-
+      const fixations = currentFixations();
       if (!fixations.length) {
-        toastError('После фильтрации не осталось ни одной фиксации. Проверьте: правильно ли распознался тип события и фильтр по стимулу.');
-        setBusy(false);
-        return;
+        throw new Error('После фильтрации не осталось ни одной фиксации. Проверьте столбцы CSV и выбор стимула.');
       }
+      const frame = frameFor(state.stim);
+      if (!frame) throw new Error('Не задано положение стимула: укажите размер экрана или прямоугольник.');
 
-      // Размер кадра, в котором регистрировались фиксации.
-      // По умолчанию — размер изображения стимула; пользователь может переопределить.
-      const frameW = state.params.frameW || state.stim.origW;
-      const frameH = state.params.frameH || state.stim.origH;
-
-      // Если координаты сильно выходят за пределы кадра — мягкое предупреждение
-      const bounds = getCoordsBounds();
-      if (bounds && (bounds.maxX > frameW * 1.05 || bounds.maxY > frameH * 1.05)) {
-        toastInfo(
-          `Координаты доходят до ${Math.round(bounds.maxX)} × ${Math.round(bounds.maxY)}, ` +
-          `а указанный размер кадра ${frameW} × ${frameH}. ` +
-          `Часть точек окажется за пределами кадра. ` +
-          `Уточните размер кадра в параметрах.`,
-          8000
-        );
-      }
-
-      setBusy(true, 'Карта салиентности…');
-      await new Promise((r) => setTimeout(r, 0));
-      const sal = computeSaliency(state.stim.imageData, state.params.method);
-
-      setBusy(true, 'Карта айтрекинга (KDE)…');
-      await new Promise((r) => setTimeout(r, 0));
-      const fixmap = buildFixationMap(fixations, frameW, frameH, state.params.sigmaPx);
-
-      setBusy(true, 'Метрики…');
-      await new Promise((r) => setTimeout(r, 0));
-      const r  = pearsonR(sal, fixmap);
-      const ns = computeNSS(fixations, sal, frameW, frameH);
-      const auc = computeAUCJudd(fixations, sal, frameW, frameH);
-
-      const diff = differenceMap(sal, fixmap);
-
+      const res = analyzeStimulus(state.stim, fixations, negativesForSingle(frame), true);
       state.result = {
-        sal, fixmap, diff,
-        fixations,
+        ...res,
         method: state.params.method,
         sigma: state.params.sigmaPx,
-        stimulusName: state.params.selectedStimulus || state.csv.stimuli[0] || '',
-        metrics: {
-          pearson: r,
-          nss: ns,
-          auc: auc,
-          nFixations: fixations.length,
-          nParticipants: countParticipants(fixations),
-        },
+        weighted: state.params.weighted,
+        frameMode: state.params.frameMode,
+        stimulusName: state.params.selectedStimulus && state.params.selectedStimulus !== ALL_STIMULI
+          ? state.params.selectedStimulus : (state.csv.stimuli[0] || ''),
       };
 
+      if (res.nOutside > 0) {
+        toastInfo(`${res.nOutside} фиксаций вне стимула не учитывались.`, 6000);
+      }
       renderResults();
       setBusy(false);
-      toastSuccess(`Готово · ${fixations.length} фиксаций · NSS = ${ns.toFixed(3)} · AUC = ${auc.toFixed(3)}`);
+      toastSuccess(`Готово · ${res.nFixations} фиксаций · NSS = ${fmt(res.model.nss, 3)} · AUC = ${fmt(res.model.auc, 3)}`);
     } catch (err) {
       setBusy(false);
-      toastError(err.message || String(err));
+      if (!state.result) hideResults();
+      toastError(err.message || String(err), 8000);
       console.error(err);
     }
   }
 
-  function countParticipants(fixations) {
+  function countParticipants(points) {
     const set = new Set();
-    for (const f of fixations) if (f.participant != null) set.add(f.participant);
+    for (const p of points) if (p.participant != null && p.participant !== '') set.add(p.participant);
     return set.size;
   }
 
@@ -5329,39 +6387,28 @@ input[type="range"]::-moz-range-thumb {
   function renderResults() {
     if (!state.result) return;
     dom.results.hidden = false;
-
     renderEvalMetrics();
+    renderBenchTable();
+    renderParticipants();
     renderStages();
   }
 
   function renderEvalMetrics() {
-    const m = state.result.metrics;
+    const r = state.result;
+    const m = r.model;
     const cards = [
+      { label: 'CC (Pearson r)', value: fmt(m.cc, 3),  hint: interpretR(m.cc) },
+      { label: 'NSS',            value: fmt(m.nss, 3), hint: interpretNSS(m.nss) },
+      { label: 'AUC-Judd',       value: fmt(m.auc, 3), hint: interpretAUC(m.auc) },
+      { label: 'sAUC',           value: fmt(m.sauc, 3),
+        hint: isFinite(m.sauc) ? interpretSAUC(m.sauc) : 'нужны фиксации на других стимулах того же CSV' },
+      { label: 'SIM',            value: fmt(m.sim, 3), hint: 'пересечение распределений, 0…1' },
+      { label: 'KL',             value: fmt(m.kl, 3),  hint: 'расхождение, меньше — лучше' },
       {
-        key: 'pearson',
-        label: 'Pearson r',
-        value: m.pearson.toFixed(3),
-        hint: interpretR(m.pearson),
-      },
-      {
-        key: 'nss',
-        label: 'NSS',
-        value: m.nss.toFixed(3),
-        hint: interpretNSS(m.nss),
-      },
-      {
-        key: 'auc',
-        label: 'AUC-Judd',
-        value: m.auc.toFixed(3),
-        hint: interpretAUC(m.auc),
-      },
-      {
-        key: 'n',
         label: 'Фиксаций',
-        value: String(m.nFixations),
-        hint: m.nParticipants > 0
-          ? `от ${m.nParticipants} участник${pluralPart(m.nParticipants)}`
-          : 'обработано',
+        value: String(r.nFixations),
+        hint: (r.nParticipants > 0 ? `от ${r.nParticipants} участник${pluralPart(r.nParticipants)}` : 'учтено')
+          + (r.nOutside ? ` · вне стимула ${r.nOutside}` : ''),
       },
     ];
 
@@ -5374,7 +6421,62 @@ input[type="range"]::-moz-range-thumb {
     `).join('');
   }
 
+  function renderBenchTable() {
+    const r = state.result;
+    const rows = [
+      ['Модель · ' + METHOD_LABELS[r.method], r.model, 'row-model'],
+      ['Центральный baseline', r.center, ''],
+      ['Согласованность участников (split-half)', r.ceiling, ''],
+    ];
+    let html = '<thead><tr><th></th>' + EVAL_KEYS.map(([, l]) => `<th>${l}</th>`).join('') + '</tr></thead><tbody>';
+    for (const [label, m, cls] of rows) {
+      html += `<tr class="${cls}"><td>${escapeHtml(label)}</td>`;
+      html += EVAL_KEYS.map(([k]) => `<td class="num${m ? '' : ' dim'}">${m ? fmt(m[k], 3) : '—'}</td>`).join('');
+      html += '</tr>';
+    }
+    html += '</tbody>';
+    dom.benchTable.innerHTML = html;
+
+    const notes = [];
+    if (r.model.nss <= r.center.nss || r.model.auc <= r.center.auc) {
+      notes.push('⚠ Модель не лучше простой гауссианы в центре кадра хотя бы по одной из метрик NSS/AUC — '
+        + 'соответствие может объясняться центральным сдвигом взгляда, а не низкоуровневой заметностью.');
+    }
+    if (!r.ceiling) {
+      notes.push('Верхний предел не посчитан: нужны идентификаторы как минимум двух участников.');
+    } else if (r.ceiling.nParticipants < 6) {
+      notes.push(`Верхний предел оценён по ${r.ceiling.nParticipants} участникам — оценка шумная.`);
+    }
+    if (!isFinite(r.model.sauc)) {
+      notes.push('sAUC требует фиксаций на других стимулах: загрузите CSV со всеми стимулами эксперимента.');
+    }
+    notes.push('Центральный baseline — гауссиана с σ = ¼ ширины и высоты кадра. Split-half: участники 10 раз '
+      + 'случайно делятся пополам, карта одной половины предсказывает фиксации другой. SIM и KL для предела '
+      + 'пессимистичны: карта половины выборки разрежена, поэтому KL предела может оказаться хуже, чем у модели.');
+    dom.benchNote.innerHTML = notes.map(escapeHtml).join('<br>');
+  }
+
+  function renderParticipants() {
+    const pp = state.result.pp;
+    if (!pp) {
+      dom.ppBlock.hidden = true;
+      return;
+    }
+    dom.ppBlock.hidden = false;
+    let html = '<thead><tr><th>Участник</th><th>Фиксаций</th><th>NSS</th><th>AUC-Judd</th><th>CC</th></tr></thead><tbody>';
+    for (const r of pp.rows) {
+      html += `<tr><td>${escapeHtml(String(r.participant))}</td><td class="num">${r.n}</td>
+        <td class="num">${fmt(r.nss, 3)}</td><td class="num">${fmt(r.auc, 3)}</td><td class="num">${fmt(r.cc, 3)}</td></tr>`;
+    }
+    const ci = (c) => `${fmt(c.mean, 3)} [${fmt(c.lo, 3)}; ${fmt(c.hi, 3)}]`;
+    html += `<tr class="row-summary"><td>M [95 % ДИ], n = ${pp.rows.length}</td><td></td>
+      <td class="num">${ci(pp.nss)}</td><td class="num">${ci(pp.auc)}</td><td class="num">${ci(pp.cc)}</td></tr>`;
+    html += '</tbody>';
+    dom.ppTable.innerHTML = html;
+  }
+
   function interpretR(r) {
+    if (!isFinite(r)) return '—';
     const a = Math.abs(r);
     if (a < 0.1) return 'нет связи';
     if (a < 0.3) return 'слабая';
@@ -5384,6 +6486,7 @@ input[type="range"]::-moz-range-thumb {
   }
 
   function interpretNSS(n) {
+    if (!isFinite(n)) return '—';
     if (n < 0.5) return 'модель ≈ случайной';
     if (n < 1.0) return 'слабое предсказание';
     if (n < 2.0) return 'уверенное предсказание';
@@ -5391,6 +6494,7 @@ input[type="range"]::-moz-range-thumb {
   }
 
   function interpretAUC(a) {
+    if (!isFinite(a)) return '—';
     if (a < 0.55) return '≈ случайно';
     if (a < 0.65) return 'слабое';
     if (a < 0.75) return 'среднее';
@@ -5398,26 +6502,47 @@ input[type="range"]::-moz-range-thumb {
     return 'высокое';
   }
 
+  function interpretSAUC(a) {
+    if (a < 0.53) return '≈ не лучше общих привычек взгляда';
+    if (a < 0.6) return 'слабое';
+    if (a < 0.7) return 'среднее';
+    return 'хорошее';
+  }
+
   function renderStages() {
-    const { sal, fixmap, diff, method } = state.result;
+    const { sal, fixmap, diff, method, weighted } = state.result;
     const { origImage, origW, origH } = state.stim;
 
-    // Ограничим размер по ширине
     const maxW = 460;
     const ratio = Math.min(1, maxW / origW);
     const dispW = Math.max(1, Math.round(origW * ratio));
     const dispH = Math.max(1, Math.round(origH * ratio));
-
     const alpha = 0.7;
 
-    const stageA = renderOverlay(origImage, sal,    TARGET, TARGET, dispW, dispH, 'jet', alpha);
-    const stageB = renderOverlay(origImage, fixmap, TARGET, TARGET, dispW, dispH, 'jet', alpha);
+    const stageA = renderOverlay(origImage, sal,    sal.width, sal.height, dispW, dispH, 'jet', alpha);
+    const stageB = renderOverlay(origImage, fixmap, fixmap.width, fixmap.height, dispW, dispH, 'jet', alpha);
+    drawFixationDots(stageB, state.result.points, sal.width, sal.height);
     const stageC = renderDiffStage(origImage, diff, dispW, dispH);
 
     dom.stageRow.innerHTML = '';
     dom.stageRow.appendChild(makeStage('Салиентность', `${METHOD_LABELS[method]}`, stageA));
-    dom.stageRow.appendChild(makeStage('Айтрекинг', `KDE, σ = ${state.result.sigma} px`, stageB));
+    dom.stageRow.appendChild(makeStage('Айтрекинг', `KDE, σ = ${state.result.sigma} px${weighted ? ', вес = длительность' : ''}`, stageB));
     dom.stageRow.appendChild(makeStage('Разница', 'salience − fixation', stageC));
+  }
+
+  /** Точки фиксаций поверх карты — чтобы видеть, что координаты легли правильно. */
+  function drawFixationDots(canvas, points, gw, gh) {
+    const ctx = canvas.getContext('2d');
+    const kx = canvas.width / gw, ky = canvas.height / gh;
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.lineWidth = 1;
+    for (const p of points) {
+      ctx.beginPath();
+      ctx.arc(p.u * gw * kx, p.v * gh * ky, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
   }
 
   function makeStage(title, subtitle, canvas) {
@@ -5439,7 +6564,6 @@ input[type="range"]::-moz-range-thumb {
    * Положительные значения (модель переоценила) — красные, отрицательные (недооценила) — синие.
    */
   function renderDiffStage(srcImg, diff, dispW, dispH) {
-    // Найдём максимальную абсолютную разницу для нормировки
     let maxAbs = 0;
     for (let i = 0; i < diff.length; i++) {
       const a = Math.abs(diff[i]);
@@ -5447,14 +6571,14 @@ input[type="range"]::-moz-range-thumb {
     }
     if (maxAbs === 0) maxAbs = 1;
 
-    // Создаём небольшой canvas с diverging cmap
+    const w = diff.width, h = diff.height;
     const small = document.createElement('canvas');
-    small.width = TARGET;
-    small.height = TARGET;
+    small.width = w;
+    small.height = h;
     const sctx = small.getContext('2d');
-    const img = sctx.createImageData(TARGET, TARGET);
+    const img = sctx.createImageData(w, h);
     for (let i = 0; i < diff.length; i++) {
-      const v = diff[i] / maxAbs;       // в [-1, +1]
+      const v = diff[i] / maxAbs;
       const [r, g, b] = divergingColormap(v);
       const a = Math.round(Math.min(1, Math.abs(v) + 0.15) * 200);
       img.data[i * 4]     = r;
@@ -5479,40 +6603,220 @@ input[type="range"]::-moz-range-thumb {
   function divergingColormap(v) {
     const t = (v + 1) / 2;
     if (t < 0.5) {
-      // blue to gray
       const k = t * 2;
       return [Math.round(60 + 195 * k), Math.round(60 + 195 * k), 220];
-    } else {
-      const k = (t - 0.5) * 2;
-      return [220, Math.round(255 - 195 * k), Math.round(255 - 195 * k)];
     }
+    const k = (t - 0.5) * 2;
+    return [220, Math.round(255 - 195 * k), Math.round(255 - 195 * k)];
+  }
+
+  /* ============================================================
+     Пакетный расчёт
+     ============================================================ */
+
+  async function handleBatchImages(files) {
+    const { ok, errors } = await loadImageFiles(files);
+    if (errors.length) toastError(`Не удалось загрузить ${errors.length} из ${files.length} файлов`);
+    const byName = new Map(state.batch.images.map((im) => [im.name, im]));
+    for (const im of ok) byName.set(im.name, im);
+    state.batch.images = [...byName.values()];
+    renderBatchInfo();
+  }
+
+  /** Пары (стимул CSV ↔ изображение). */
+  function batchPairs() {
+    const pairs = [];
+    for (const s of state.csv.stimuli) {
+      const img = state.batch.images.find((im) => matchStimulus([s], im.name));
+      if (img) pairs.push({ stimulus: s, img });
+    }
+    return pairs;
+  }
+
+  function renderBatchInfo() {
+    const hasStimCol = !!state.csv.parsed && !!state.csv.mapping?.stimulus && state.csv.stimuli.length > 0;
+    dom.batch.hidden = !hasStimCol;
+    if (!hasStimCol) return;
+    const pairs = batchPairs();
+    const unmatched = state.csv.stimuli.length - pairs.length;
+    dom.batchInfo.textContent = state.batch.images.length
+      ? `изображений: ${state.batch.images.length} · сопоставлено стимулов: ${pairs.length} из ${state.csv.stimuli.length}`
+        + (unmatched ? ` · без изображения: ${unmatched}` : '')
+      : `в CSV стимулов: ${state.csv.stimuli.length}`;
+    dom.batchRun.disabled = pairs.length === 0;
+  }
+
+  async function runBatch() {
+    const pairs = batchPairs();
+    if (!pairs.length) return;
+
+    // Фиксации всех стимулов (сопоставленных) и их относительные координаты — для sAUC
+    const all = [];
+    for (const { stimulus, img } of pairs) {
+      const fixations = fixationsFor(stimulus, img);
+      const frame = frameFor(img);
+      const uv = [];
+      if (frame) {
+        for (const f of fixations) {
+          const u = (f.x - frame.x0) / frame.w, v = (f.y - frame.y0) / frame.h;
+          if (u >= 0 && u < 1 && v >= 0 && v < 1) uv.push({ u, v });
+        }
+      }
+      all.push({ stimulus, img, fixations, uv });
+    }
+
+    const rows = [];
+    dom.batchRun.disabled = true;
+    for (let i = 0; i < all.length; i++) {
+      const cur = all[i];
+      dom.batchInfo.textContent = `расчёт ${i + 1} / ${all.length}: ${cur.stimulus}`;
+      await new Promise((r) => setTimeout(r, 0));
+      const neg = all.filter((o) => o !== cur).flatMap((o) => o.uv);
+      try {
+        if (!cur.fixations.length) throw new Error('нет фиксаций');
+        const res = analyzeStimulus(cur.img, cur.fixations, neg, false);
+        const pp = perParticipantSummary(res);
+        rows.push({ stimulus: cur.stimulus, image: cur.img.name, res, pp, error: null });
+      } catch (err) {
+        rows.push({ stimulus: cur.stimulus, image: cur.img.name, res: null, error: err.message || String(err) });
+      }
+    }
+    state.batch.rows = rows;
+    state.batch.summary = batchSummary(rows);
+    renderBatchTable();
+    renderBatchInfo();
+    toastSuccess(`Пакет готов · ${rows.filter((r) => r.res).length} из ${rows.length} стимулов`);
+  }
+
+  /** Для пакета участников не показываем построчно — только среднее NSS по участникам. */
+  function perParticipantSummary(res) {
+    const pp = perParticipant(prepareMap(res.sal), res.points, res.sal.width, res.sal.height, res.frame, state.params.sigmaPx);
+    return pp ? pp.nss : null;
+  }
+
+  function batchSummary(rows) {
+    const ok = rows.filter((r) => r.res);
+    if (ok.length < 1) return null;
+    const pick = (fn) => meanCI95(ok.map(fn).filter((v) => isFinite(v)));
+    const out = {};
+    for (const [k] of EVAL_KEYS) {
+      out[`model_${k}`] = pick((r) => r.res.model[k]);
+      out[`center_${k}`] = pick((r) => r.res.center[k]);
+      out[`ceiling_${k}`] = pick((r) => (r.res.ceiling ? r.res.ceiling[k] : NaN));
+    }
+    return out;
+  }
+
+  function renderBatchTable() {
+    const rows = state.batch.rows;
+    dom.batchResults.hidden = !rows.length;
+    const head = ['Стимул', 'Фикс.', 'Уч.', ...EVAL_KEYS.map(([, l]) => l), 'NSS центр', 'AUC центр', 'NSS предел', 'AUC предел'];
+    let html = '<thead><tr>' + head.map((h) => `<th>${escapeHtml(h)}</th>`).join('') + '</tr></thead><tbody>';
+    for (const r of rows) {
+      if (!r.res) {
+        html += `<tr><td>${escapeHtml(r.stimulus)}</td><td colspan="${head.length - 1}" class="dim">ошибка: ${escapeHtml(r.error)}</td></tr>`;
+        continue;
+      }
+      const m = r.res.model;
+      html += `<tr><td title="${escapeAttr(r.image)}">${escapeHtml(r.stimulus)}</td>
+        <td class="num">${r.res.nFixations}</td><td class="num">${r.res.nParticipants}</td>
+        ${EVAL_KEYS.map(([k]) => `<td class="num">${fmt(m[k], 3)}</td>`).join('')}
+        <td class="num">${fmt(r.res.center.nss, 3)}</td><td class="num">${fmt(r.res.center.auc, 3)}</td>
+        <td class="num">${r.res.ceiling ? fmt(r.res.ceiling.nss, 3) : '—'}</td>
+        <td class="num">${r.res.ceiling ? fmt(r.res.ceiling.auc, 3) : '—'}</td></tr>`;
+    }
+    const s = state.batch.summary;
+    if (s) {
+      const c = (x) => (isFinite(x.mean) ? `${fmt(x.mean, 3)}${isFinite(x.lo) ? ` ±${fmt(x.hi - x.mean, 3)}` : ''}` : '—');
+      html += `<tr class="row-summary"><td>M ± 95 % ДИ</td><td></td><td></td>
+        ${EVAL_KEYS.map(([k]) => `<td class="num">${c(s[`model_${k}`])}</td>`).join('')}
+        <td class="num">${c(s.center_nss)}</td><td class="num">${c(s.center_auc)}</td>
+        <td class="num">${c(s.ceiling_nss)}</td><td class="num">${c(s.ceiling_auc)}</td></tr>`;
+    }
+    html += '</tbody>';
+    dom.batchTable.innerHTML = html;
   }
 
   /* ============================================================
      Экспорт
      ============================================================ */
 
+  function paramRows() {
+    const p = state.params;
+    const frame = frameFor(state.stim);
+    return [
+      ['# method', p.method],
+      ['# kde_sigma_px', p.sigmaPx],
+      ['# duration_weighted', p.weighted ? 1 : 0],
+      ['# frame_mode', p.frameMode],
+      ['# screen', p.screenW ?? '', p.screenH ?? ''],
+      ['# stimulus_rect_x0_y0_w_h', ...(frame ? [frame.x0, frame.y0, frame.w, frame.h].map((v) => +v.toFixed(2)) : [])],
+      ['# coords_normalized', p.norm ? 1 : 0],
+      ['# center_baseline', 'gaussian sigma = W/4, H/4'],
+      ['# ceiling', 'split-half between participants, 10 random splits x 2 directions'],
+    ];
+  }
+
   function exportCsvReport() {
     if (!state.result) return;
     const r = state.result;
-    const m = r.metrics;
     const rows = [];
     rows.push(['# Saliency vs Eye-tracking · ' + new Date().toISOString()]);
-    rows.push(['# stimulus', state.stim.name]);
+    rows.push(['# stimulus_image', state.stim.name]);
+    rows.push(['# stimulus_in_csv', r.stimulusName]);
     rows.push(['# fixation_csv', state.csv.fileName]);
-    rows.push(['# method', r.method]);
-    rows.push(['# kde_sigma_px', r.sigma]);
+    rows.push(...paramRows());
+    rows.push(['# n_fixations', r.nFixations, 'outside_stimulus', r.nOutside, 'n_participants', r.nParticipants,
+      'sauc_negatives', r.nNegatives]);
     rows.push([]);
-    rows.push(['metric', 'value', 'interpretation']);
-    rows.push(['pearson_r', m.pearson.toFixed(4), interpretR(m.pearson)]);
-    rows.push(['nss',       m.nss.toFixed(4),    interpretNSS(m.nss)]);
-    rows.push(['auc_judd',  m.auc.toFixed(4),    interpretAUC(m.auc)]);
-    rows.push(['n_fixations', m.nFixations, '']);
-    rows.push(['n_participants', m.nParticipants, '']);
+    rows.push(['metric', 'model', 'center_baseline', 'ceiling_split_half', 'interpretation']);
+    const interp = { cc: interpretR, nss: interpretNSS, auc: interpretAUC, sauc: (v) => (isFinite(v) ? interpretSAUC(v) : '') };
+    for (const [k] of EVAL_KEYS) {
+      rows.push([k, num(r.model[k]), num(r.center[k]), r.ceiling ? num(r.ceiling[k]) : '', interp[k] ? interp[k](r.model[k]) : '']);
+    }
+    if (r.pp) {
+      rows.push([]);
+      rows.push(['participant', 'n_fixations', 'nss', 'auc_judd', 'cc']);
+      for (const p of r.pp.rows) rows.push([p.participant, p.n, num(p.nss), num(p.auc), num(p.cc)]);
+      rows.push([]);
+      rows.push(['by_participant', 'n', 'mean', 'sd', 'ci95_lo', 'ci95_hi']);
+      for (const k of ['nss', 'auc', 'cc']) {
+        const c = r.pp[k];
+        rows.push([k, c.n, num(c.mean), num(c.sd), num(c.lo), num(c.hi)]);
+      }
+    }
 
     const fname = `${stripExt(state.stim.name)}_eyetracking_report.csv`;
     downloadCSV(rows, fname);
     toastSuccess(`Сохранено: ${fname}`);
+  }
+
+  function exportBatchCsv() {
+    const rows = [];
+    rows.push(['# Saliency vs Eye-tracking · batch · ' + new Date().toISOString()]);
+    rows.push(['# fixation_csv', state.csv.fileName]);
+    rows.push(...paramRows().filter((r) => r[0] !== '# stimulus_rect_x0_y0_w_h'));
+    rows.push([]);
+    const keys = EVAL_KEYS.map(([k]) => k);
+    rows.push(['stimulus', 'image', 'n_fixations', 'n_outside', 'n_participants',
+      ...keys.map((k) => `model_${k}`), ...keys.map((k) => `center_${k}`), ...keys.map((k) => `ceiling_${k}`),
+      'pp_nss_mean', 'pp_nss_ci_lo', 'pp_nss_ci_hi', 'error']);
+    for (const r of state.batch.rows) {
+      if (!r.res) { rows.push([r.stimulus, r.image, '', '', '', ...keys.map(() => ''), ...keys.map(() => ''), ...keys.map(() => ''), '', '', '', r.error]); continue; }
+      const s = r.res;
+      rows.push([r.stimulus, r.image, s.nFixations, s.nOutside, s.nParticipants,
+        ...keys.map((k) => num(s.model[k])), ...keys.map((k) => num(s.center[k])),
+        ...keys.map((k) => (s.ceiling ? num(s.ceiling[k]) : '')),
+        r.pp ? num(r.pp.mean) : '', r.pp ? num(r.pp.lo) : '', r.pp ? num(r.pp.hi) : '', '']);
+    }
+    const sm = state.batch.summary;
+    if (sm) {
+      rows.push([]);
+      rows.push(['summary_over_stimuli', 'n', 'mean', 'sd', 'ci95_lo', 'ci95_hi']);
+      for (const [k, v] of Object.entries(sm)) rows.push([k, v.n, num(v.mean), num(v.sd), num(v.lo), num(v.hi)]);
+    }
+    downloadCSV(rows, 'eyetracking_batch_report.csv');
+    toastSuccess('Сохранено: eyetracking_batch_report.csv');
   }
 
   async function exportZipMaps() {
@@ -5522,13 +6826,13 @@ input[type="range"]::-moz-range-thumb {
 
     const { sal, fixmap } = state.result;
     const { origImage, origW, origH, name } = state.stim;
-    const settings = { colormap: 'jet', alpha: 0.7 };
+    const cm = 'jet', alpha = 0.7;
 
     const entries = [];
-    const overlayA = renderOverlay(origImage, sal,    TARGET, TARGET, origW, origH, settings.colormap, settings.alpha);
-    const overlayB = renderOverlay(origImage, fixmap, TARGET, TARGET, origW, origH, settings.colormap, settings.alpha);
-    const heatA    = renderHeatmap(sal,    TARGET, TARGET, origW, origH, settings.colormap, settings.alpha);
-    const heatB    = renderHeatmap(fixmap, TARGET, TARGET, origW, origH, settings.colormap, settings.alpha);
+    const overlayA = renderOverlay(origImage, sal,    sal.width, sal.height, origW, origH, cm, alpha);
+    const overlayB = renderOverlay(origImage, fixmap, fixmap.width, fixmap.height, origW, origH, cm, alpha);
+    const heatA    = renderHeatmap(sal,    sal.width, sal.height, origW, origH, cm, alpha);
+    const heatB    = renderHeatmap(fixmap, fixmap.width, fixmap.height, origW, origH, cm, alpha);
 
     const base = stripExt(name);
     for (const [c, label] of [
@@ -5549,6 +6853,14 @@ input[type="range"]::-moz-range-thumb {
   /* ============================================================
      UI utilities
      ============================================================ */
+
+  function fmt(v, d = 3) {
+    return v == null || !isFinite(v) ? '—' : v.toFixed(d);
+  }
+
+  function num(v) {
+    return v == null || !isFinite(v) ? '' : +v.toFixed(4);
+  }
 
   function setBusy(busy, msg = '') {
     state.busy = busy;
@@ -5592,7 +6904,6 @@ input[type="range"]::-moz-range-thumb {
     const m = n % 10;
     if (n % 100 >= 11 && n % 100 <= 14) return 'ов';
     if (m === 1) return 'а';
-    if (m >= 2 && m <= 4) return 'ов';
     return 'ов';
   }
   // expose

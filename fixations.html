@@ -37,8 +37,9 @@
       <p class="panel-desc">
         Загрузите стимул и CSV с координатами фиксаций. Модуль построит карту салиентности
         выбранным методом (FT, DoG, Local Contrast, Spectral Residual) и тепловую карту
-        ваших айтрекерных данных через KDE, после чего рассчитает три стандартные метрики
-        соответствия: Pearson r, NSS и AUC-Judd.
+        ваших айтрекерных данных через KDE, после чего рассчитает стандартные метрики
+        соответствия (CC, NSS, AUC-Judd, shuffled AUC, SIM, KL) и сравнит модель с центральным
+        baseline и с согласованностью самих участников. Можно посчитать сразу все стимулы файла.
       </p>
     </header>
 
@@ -98,7 +99,7 @@
           <input type="range" id="param-sigma" min="5" max="100" value="30">
         </div>
         <div class="setting">
-          <label for="param-stim-filter">Стимул</label>
+          <label for="param-stim-filter">Стимул в CSV</label>
           <div class="select-wrap">
             <select id="param-stim-filter">
               <option value="">— нет данных —</option>
@@ -107,23 +108,49 @@
         </div>
       </div>
 
+      <details class="frame-row param-details" id="col-block">
+        <summary class="frame-row-label">Столбцы CSV · распознаны автоматически, проверьте
+          <span class="param-summary" id="col-summary"></span></summary>
+        <div class="col-grid" id="col-grid"></div>
+      </details>
+
       <div class="frame-row">
-        <div class="frame-row-label">Размер кадра, в котором регистрировались координаты</div>
+        <div class="frame-row-label">Где находился стимул в координатах айтрекера</div>
         <div class="frame-row-fields">
-          <label class="frame-field">
-            <span>W, px</span>
-            <input type="number" id="frame-w" min="1" step="1">
-          </label>
-          <span class="frame-x">×</span>
-          <label class="frame-field">
-            <span>H, px</span>
-            <input type="number" id="frame-h" min="1" step="1">
-          </label>
-          <button class="btn btn-ghost btn-small" id="frame-reset" type="button" title="Использовать размер изображения">
-            ↺ из изображения
-          </button>
-          <span class="frame-hint" id="frame-hint"></span>
+          <div class="select-wrap select-inline">
+            <select id="frame-mode">
+              <option value="image">Координаты уже в пикселях изображения</option>
+              <option value="center">Стимул по центру экрана, в исходном размере</option>
+              <option value="fit">Стимул растянут на экран с сохранением пропорций</option>
+              <option value="manual">Прямоугольник стимула задан вручную</option>
+            </select>
+          </div>
+          <span class="frame-group" data-modes="center fit norm">
+            <label class="frame-field"><span>экран W</span><input type="number" id="screen-w" min="1" step="1"></label>
+            <span class="frame-x">×</span>
+            <label class="frame-field"><span>H</span><input type="number" id="screen-h" min="1" step="1"></label>
+          </span>
+          <span class="frame-group" data-modes="manual">
+            <label class="frame-field"><span>left</span><input type="number" id="rect-x" step="1"></label>
+            <label class="frame-field"><span>top</span><input type="number" id="rect-y" step="1"></label>
+            <label class="frame-field"><span>width</span><input type="number" id="rect-w" min="1" step="1"></label>
+            <label class="frame-field"><span>height</span><input type="number" id="rect-h" min="1" step="1"></label>
+          </span>
         </div>
+        <label class="check-row">
+          <input type="checkbox" id="coords-norm">
+          Координаты в долях (0–1), например GazePoint FPOGX / FPOGY — умножаются на размер экрана
+          (в режиме «пиксели изображения» — на размер изображения)
+        </label>
+        <span class="frame-hint" id="frame-hint"></span>
+      </div>
+
+      <div class="frame-row">
+        <label class="check-row">
+          <input type="checkbox" id="opt-duration">
+          Взвешивать фиксации по длительности (карта KDE и NSS). По умолчанию выключено —
+          как в стандартных бенчмарках; AUC и sAUC всегда считаются без весов.
+        </label>
       </div>
 
       <div class="run-row">
@@ -145,6 +172,19 @@
       </h3>
       <div class="metrics-grid" id="eval-metrics"></div>
 
+      <h3 class="section-title">Модель на фоне ориентиров
+        <span class="section-sub">центральный baseline — нижняя планка, согласованность участников — верхняя</span>
+      </h3>
+      <div class="data-table-wrap"><table class="data-table" id="bench-table"></table></div>
+      <p class="bench-note" id="bench-note"></p>
+
+      <div id="pp-block" hidden>
+        <h3 class="section-title">По участникам
+          <span class="section-sub">участник — единица наблюдения; среднее и 95 % доверительный интервал</span>
+        </h3>
+        <div class="data-table-wrap pp-wrap"><table class="data-table" id="pp-table"></table></div>
+      </div>
+
       <h3 class="section-title">Карты
         <span class="section-sub">наложение поверх стимула</span>
       </h3>
@@ -154,6 +194,32 @@
         <span class="toolbar-spacer"></span>
         <button class="btn" id="dl-csv" type="button">↓ CSV отчёт</button>
         <button class="btn btn-primary" id="dl-zip" type="button">↓ ZIP всех карт</button>
+      </div>
+    </section>
+
+    <!-- ==================== ПАКЕТНЫЙ РАСЧЁТ ==================== -->
+    <section class="settings-panel batch-panel" id="batch" hidden>
+      <div class="frame-row">
+        <div class="frame-row-label">Пакетный расчёт по всем стимулам из CSV</div>
+        <p class="batch-desc">
+          Загрузите изображения всех стимулов — они сопоставятся с колонкой «Стимул» по имени
+          файла (без пути и расширения). Для каждого стимула будут посчитаны те же метрики
+          с текущими параметрами; sAUC использует фиксации на остальных стимулах как негативы.
+        </p>
+        <div class="frame-row-fields">
+          <input type="file" id="batch-files" multiple accept="image/jpeg,image/png,image/webp,image/bmp" hidden>
+          <button class="btn" id="batch-pick" type="button">+ Изображения стимулов</button>
+          <span class="toolbar-info" id="batch-info"></span>
+          <span class="toolbar-spacer"></span>
+          <button class="btn btn-primary" id="batch-run" type="button" disabled>Рассчитать для всех</button>
+        </div>
+      </div>
+      <div class="frame-row" id="batch-results" hidden>
+        <div class="data-table-wrap"><table class="data-table" id="batch-table"></table></div>
+        <div class="frame-row-fields">
+          <span class="toolbar-spacer"></span>
+          <button class="btn" id="batch-dl" type="button">↓ CSV пакета</button>
+        </div>
       </div>
     </section>
 

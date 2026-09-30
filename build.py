@@ -20,6 +20,7 @@ ROOT = Path(__file__).parent
 # Файлы в порядке зависимостей
 JS_FILES = [
     'js/algorithms/util.js',
+    'js/stats.js',
     'js/algorithms/blur.js',
     'js/algorithms/color.js',
     'js/algorithms/fft.js',
@@ -43,6 +44,7 @@ JS_FILES = [
 # Файлы для отдельного бандла айтрекинг-модуля fixations.html
 FIX_JS_FILES = [
     'js/algorithms/util.js',
+    'js/stats.js',
     'js/algorithms/blur.js',
     'js/algorithms/color.js',
     'js/algorithms/fft.js',
@@ -64,7 +66,9 @@ FIX_JS_FILES = [
 
 # Что каждый модуль публикует наружу (в window)
 EXPORTS = {
-    'js/algorithms/util.js':    ['normalize'],
+    'js/algorithms/util.js':    ['normalize', 'withSize', 'resampleMap', 'cropMap', 'NORM_PERCENTILE'],
+    'js/stats.js':              ['meanOf', 'sdOf', 'meanCI95', 'oneWayAnova', 'fCdf', 'tCdf',
+                                 'tCritical', 'betaInc', 'formatP'],
     'js/algorithms/blur.js':    ['gaussBlur1D'],
     'js/algorithms/color.js':   ['rgbToLab', 'rgbToGray', 'rgbChannels'],
     'js/algorithms/fft.js':     ['fft1d', 'fft2d'],
@@ -76,7 +80,7 @@ EXPORTS = {
     'js/colormap.js':           ['jet', 'hot', 'gray', 'getColormap', 'colormapLegendDataURL'],
     'js/metrics.js':            ['computeMetrics', 'METRIC_LABELS', 'METHOD_DESC', 'pearsonR', 'formatMetric'],
     'js/render.js':             ['renderHeatmap', 'renderOverlay', 'canvasToBlob'],
-    'js/loader.js':             ['loadImageFile', 'loadImageFiles', 'cropToImageData', 'TARGET_SIZE'],
+    'js/loader.js':             ['loadImageFile', 'loadImageFiles', 'cropToImageData', 'TARGET_SIZE', 'workSize'],
     'js/export.js':             ['toCSV', 'downloadCSV', 'downloadBlob', 'downloadCanvasPNG',
                                  'jsZipAvailable', 'downloadZip', 'stripExt'],
     'js/toast.js':              ['toast', 'toastError', 'toastSuccess', 'toastInfo'],
@@ -84,8 +88,11 @@ EXPORTS = {
     'js/modes/single.js':       ['initSingleMode'],
     'js/modes/compare.js':      ['initCompareMode'],
     'js/modes/match.js':        ['initMatchMode'],
-    'js/eyetracking/csv-parser.js': ['parseCSV', 'detectColumns', 'extractFixations', 'uniqueStimuli'],
-    'js/eyetracking/fixmap.js':     ['buildFixationMap', 'pearsonR', 'computeNSS', 'computeAUCJudd', 'differenceMap', 'TARGET'],
+    'js/eyetracking/csv-parser.js': ['parseCSV', 'detectColumns', 'extractFixations', 'uniqueStimuli',
+                                     'stimulusKey', 'matchStimulus', 'parseNum', 'COLUMN_ROLES'],
+    'js/eyetracking/fixmap.js':     ['mapFixations', 'buildFixationMap', 'centerBaseline', 'prepareMap',
+                                     'computeNSS', 'computeAUCJudd', 'computeSAUC', 'computeSIM', 'computeKL',
+                                     'evaluateMap', 'interObserverCeiling', 'perParticipant', 'differenceMap'],
     'js/fixations-app.js':          [],  # точка входа, всё в DOMContentLoaded
 }
 

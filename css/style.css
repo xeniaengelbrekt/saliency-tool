@@ -2894,3 +2894,90 @@ input[type="range"]::-moz-range-thumb {
   .tab-num { display: none; }
   .info-bar { flex-direction: column; align-items: flex-start; }
 }
+
+
+/* ============================================================
+   Режим 3: параметры подбора и блок ANOVA
+   ============================================================ */
+
+.match-options {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.match-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.match-opt input[type="number"] {
+  width: 64px;
+  padding: 4px 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-bright);
+  font-family: var(--font-mono);
+}
+.match-opt input[type="checkbox"] { accent-color: var(--green); }
+.match-opt-title { color: var(--text-mute); }
+.match-opt-sep { width: 1px; height: 18px; background: var(--border); }
+.match-stats { margin-top: 24px; margin-bottom: 16px; }
+
+
+/* ============================================================
+   Айтрекинг: столбцы CSV, положение стимула, ориентиры, пакет
+   ============================================================ */
+
+.param-details summary { cursor: pointer; list-style: revert; }
+.param-summary { text-transform: none; letter-spacing: 0.2px; color: var(--text-mute); margin-left: 8px; }
+.col-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px 16px;
+  margin-top: 10px;
+}
+.col-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+.col-grid select, .select-inline select {
+  background: var(--bg-input);
+  color: var(--text-bright);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  max-width: 100%;
+}
+.select-inline { display: inline-block; }
+.frame-group { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.frame-group[hidden] { display: none; }
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  cursor: pointer;
+}
+.check-row input { margin-top: 3px; accent-color: var(--green); }
+.bench-note, .batch-desc {
+  font-size: 12px;
+  color: var(--text-mute);
+  line-height: 1.55;
+  margin: 8px 0 20px;
+}
+.batch-panel { margin-top: 28px; }
+.pp-wrap { max-height: 360px; }
+.data-table tr.row-model td { color: var(--text-bright); }
+.data-table tr.row-summary td { border-top: 1px solid var(--border-hov); color: var(--green); }
+.data-table td.dim { color: var(--text-mute); }

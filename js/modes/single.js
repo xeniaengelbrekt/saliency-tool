@@ -113,7 +113,7 @@ async function recompute() {
   await new Promise((r) => setTimeout(r, 0));
   const settings = getSettings();
   state.sal = computeSaliency(state.loaded.imageData, settings.method);
-  state.metrics = computeMetrics(state.sal, TARGET_SIZE, TARGET_SIZE);
+  state.metrics = computeMetrics(state.sal);
   renderStage();
   renderMetrics();
   renderHistogram();
@@ -134,7 +134,7 @@ function renderStage() {
   if (state.showHeat) {
     canvas = renderOverlay(
       origImage, state.sal,
-      TARGET_SIZE, TARGET_SIZE,
+      state.sal.width, state.sal.height,
       dispW, dispH,
       settings.colormap, settings.alpha
     );
@@ -419,7 +419,7 @@ async function downloadHeatmapPNG() {
   const settings = getSettings();
   const canvas = renderHeatmap(
     state.sal,
-    TARGET_SIZE, TARGET_SIZE,
+    state.sal.width, state.sal.height,
     origW, origH,
     settings.colormap, settings.alpha
   );
@@ -434,7 +434,7 @@ async function downloadOverlayPNG() {
   const settings = getSettings();
   const canvas = renderOverlay(
     origImage, state.sal,
-    TARGET_SIZE, TARGET_SIZE,
+    state.sal.width, state.sal.height,
     origW, origH,
     settings.colormap, settings.alpha
   );

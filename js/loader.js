@@ -1,10 +1,26 @@
 /* ============================================================
    loader.js — загрузка изображений
-   File → ImageData 256×256 (фиксированный размер для скорости)
-   + сохранение оригинала для рендера в исходном разрешении.
+   File → рабочая копия ImageData (длинная сторона 256 px,
+   ПРОПОРЦИИ СОХРАНЕНЫ) + оригинал для рендера в исходном разрешении.
+
+   Раньше изображение сжималось в квадрат 256×256, из-за чего
+   широкие и высокие кадры искажались: размытие становилось
+   анизотропным, а центр/периферия и корреляции между картами
+   считались по деформированному изображению.
    ============================================================ */
 
+/** Длина длинной стороны рабочей копии, px. */
 export const TARGET_SIZE = 256;
+const MIN_SIDE = 8;
+
+/** Размер рабочей копии для исходного w×h (длинная сторона = TARGET_SIZE). */
+export function workSize(w, h) {
+  const k = TARGET_SIZE / Math.max(w, h);
+  return {
+    width:  Math.max(MIN_SIDE, Math.round(w * k)),
+    height: Math.max(MIN_SIDE, Math.round(h * k)),
+  };
+}
 
 const ALLOWED = /\.(jpe?g|png|webp|bmp)$/i;
 
@@ -27,15 +43,16 @@ export function loadImageFile(file) {
         const origW = img.naturalWidth;
         const origH = img.naturalHeight;
 
+        const { width: ww, height: wh } = workSize(origW, origH);
         const canvas = document.createElement('canvas');
-        canvas.width = TARGET_SIZE;
-        canvas.height = TARGET_SIZE;
+        canvas.width = ww;
+        canvas.height = wh;
         const ctx = canvas.getContext('2d');
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, 0, 0, TARGET_SIZE, TARGET_SIZE);
+        ctx.drawImage(img, 0, 0, ww, wh);
 
-        const imageData = ctx.getImageData(0, 0, TARGET_SIZE, TARGET_SIZE);
+        const imageData = ctx.getImageData(0, 0, ww, wh);
         const thumb = canvas.toDataURL('image/jpeg', 0.85);
 
         resolve({
@@ -77,19 +94,20 @@ export async function loadImageFiles(files) {
 }
 
 /**
- * Извлечь ImageData 256×256 из произвольной области HTMLImageElement
- * (для режима составного стимула).
+ * Извлечь рабочую копию ImageData (пропорции сохранены) из произвольной
+ * области HTMLImageElement (превью регионов составного стимула).
  */
 export function cropToImageData(srcImage, sx, sy, sw, sh) {
+  const { width: ww, height: wh } = workSize(sw, sh);
   const canvas = document.createElement('canvas');
-  canvas.width = TARGET_SIZE;
-  canvas.height = TARGET_SIZE;
+  canvas.width = ww;
+  canvas.height = wh;
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(srcImage, sx, sy, sw, sh, 0, 0, TARGET_SIZE, TARGET_SIZE);
+  ctx.drawImage(srcImage, sx, sy, sw, sh, 0, 0, ww, wh);
   return {
-    imageData: ctx.getImageData(0, 0, TARGET_SIZE, TARGET_SIZE),
+    imageData: ctx.getImageData(0, 0, ww, wh),
     thumb: canvas.toDataURL('image/jpeg', 0.85),
   };
 }

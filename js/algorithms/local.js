@@ -10,7 +10,8 @@ export function localContrastSaliency(imageData) {
   const { R, G, B, width, height } = rgbChannels(imageData);
   const N = R.length;
 
-  const sigma = 0.08 * Math.min(width, height);
+  // σ = 8 % длинной стороны: при сохранённых пропорциях окрестность не зависит от формы кадра
+  const sigma = 0.08 * Math.max(width, height);
   const Rb = gaussBlur1D(R, width, height, sigma);
   const Gb = gaussBlur1D(G, width, height, sigma);
   const Bb = gaussBlur1D(B, width, height, sigma);
