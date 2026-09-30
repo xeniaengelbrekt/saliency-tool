@@ -191,7 +191,10 @@ def build_bundle(html_name: str, js_files: list[str], js_entry: str, out_name: s
         print(f'WARN: ссылка на {js_entry} не найдена в {html_name}')
 
     out = ROOT / out_name
-    out.write_text(html, encoding='utf-8')
+    # Всегда LF: результат не должен зависеть от системы, на которой запущена сборка
+    # (иначе проверка «бандлы актуальны» на GitHub сравнивала бы CRLF с LF).
+    with open(out, 'w', encoding='utf-8', newline='\n') as fh:
+        fh.write(html)
     size_kb = len(html.encode('utf-8')) / 1024
     print(f'OK: {out}  ({size_kb:.1f} КБ)')
     return True
