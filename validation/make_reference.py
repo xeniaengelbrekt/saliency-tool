@@ -268,6 +268,11 @@ def main():
             'center': eval_map(center_baseline(w, h), idx, neg, dens, rng),
         }
         im['sigma'] = SIGMA_KDE
+        # одинаковые входные данные для сверки метрик в JS и во внешней библиотеке
+        im['dens'] = b64(dens.astype(np.float32))
+        im['idx'] = [int(i) for i in idx]
+        im['neg'] = [int(i) for i in neg]
+        im['center'] = b64(center_baseline(w, h))
 
     # статистика: ANOVA, квантили t, доверительный интервал
     srng = np.random.default_rng(7)
