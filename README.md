@@ -116,7 +116,7 @@ FT, нормировка карт и рабочее разрешение — р�
 > салиентности стимулов. Версия 1.1.4. Программное обеспечение
 > [Электронный ресурс]. 2026.
 > https://github.com/xeniaengelbrekt/saliency-tool
-> *(DOI будет добавлен после публикации релиза на Zenodo)*
+> DOI: https://doi.org/10.5281/zenodo.23081651
 
 Метаданные для менеджеров ссылок — в файле [`CITATION.cff`](CITATION.cff)
 (на GitHub: «Cite this repository»).

@@ -3,7 +3,8 @@ message: "Если вы используете этот инструмент в 
 title: "Saliency: браузерный модуль количественной оценки визуальной салиентности стимулов"
 type: software
 version: 1.1.4
-date-released: 2026-09-30
+doi: 10.5281/zenodo.23081651
+date-released: 2026-10-01
 license: MIT
 authors:
   - family-names: "Скуратова"
