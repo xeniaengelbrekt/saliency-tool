@@ -25,6 +25,11 @@ sal = pd.DataFrame(json.load(open(os.path.join(D, 'saliency_cells.json'), encodi
 sal['cell'] = sal['cell'].map({'R1C1': 'TL', 'R1C2': 'TR', 'R2C1': 'BL', 'R2C2': 'BR'}); sal = sal.rename(columns={'file': 'stimulus'})
 sal = sal[sal.stimulus != EXCL]
 cat = lambda s: s.replace('.png', '').rsplit('_', 1)[0]
+aoi_path = os.path.join(D, 'aoi_table.csv')
+if os.path.exists(aoi_path):  # разметка автора: тип стимула и категория из таблицы областей интереса
+    at = pd.read_csv(aoi_path, encoding='utf-8-sig').drop_duplicates('stimulus')
+    label = {r.stimulus + '.png': (('control_' if r.stimulus_type == 'control' else '') + r.category) for r in at.itertuples()}
+    cat = lambda s: label[s if s.endswith('.png') else s + '.png']
 gz['category'] = gz.stimulus.map(cat); sal['category'] = sal.stimulus.map(cat)
 cells = ['TL', 'TR', 'BL', 'BR']
 print('Стимулов:', gz.stimulus.nunique(), '| участников:', gz.pid.nunique(), '| категории:', gz.drop_duplicates('stimulus').category.value_counts().to_dict())
@@ -70,7 +75,7 @@ def analyse(g_gz, g_sal, method):
 groups = {
     'контрольные (все 4 нейтральные)': lambda c: c.startswith('control'),
     'эмоциональные (все)': lambda c: not c.startswith('control'),
-    'эмоц.: люди (person)': lambda c: c == 'person',
+    'эмоц.: один человек (person)': lambda c: c == 'person',
     'эмоц.: группы людей (group)': lambda c: c == 'group',
     'эмоц.: животные (animals)': lambda c: c == 'animals',
     'эмоц.: объекты (subjects)': lambda c: c == 'subjects',
